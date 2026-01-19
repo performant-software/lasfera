@@ -26,13 +26,13 @@ def annotate_text(html_content, annotations):
     inner_html = soup.div.decode_contents() if soup.div else html_content
 
     # Sort annotations by start position
-    sorted_annotations = sorted(annotations, key=lambda x: x.from_pos)
+    sorted_annotations = sorted(
+        annotations, 
+        key=lambda x: x.from_pos.get('offset', 0) if isinstance(x.from_pos, dict) else (x.from_pos or 0)
+    )
 
     result = []
     last_pos = 0
-
-    # Get just the text content for comparison
-    text_content = soup.get_text()
 
     for annotation in sorted_annotations:
         # Find the actual text we're looking for

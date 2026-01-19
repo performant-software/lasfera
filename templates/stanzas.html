@@ -211,7 +211,7 @@
                                  href="{% url 'manuscript_stanzas' default_manuscript.siglum %}#{{stanza.stanza_line_code_starts}}"
                                  id="{{stanza.stanza_line_code_starts}}"
                                  title="Anchor link to line code {{ stanza.stanza_line_code_starts}}"
-                                 {% with stanza_folio=stanza.folios.first %}
+                                 {% with stanza_folio=stanza.folios.all.0 %}
                                  data-folio="{{ stanza_folio.folio_number }}"
                                  {% endwith %}
                                  onclick="navigateToFolio(event, this)">

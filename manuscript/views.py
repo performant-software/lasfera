@@ -191,6 +191,7 @@ def manuscript_stanzas(request, siglum):
                             matching_folio = line_code_to_folio[stanza_code]
 
                             # If this is a new folio, mark it in the stanza group
+                            existing_folio_ids = {f.id for f in first_stanza.folios.all()}
                             if current_folio is None or matching_folio != current_folio:
                                 current_folio = matching_folio
                                 stanza_group["new_folio"] = True
@@ -200,9 +201,7 @@ def manuscript_stanzas(request, siglum):
                                 )
 
                                 # Associate the stanza with this folio if not already done
-                                if not first_stanza.folios.filter(
-                                    id=matching_folio.id
-                                ).exists():
+                                if matching_folio.id not in existing_folio_ids:
                                     first_stanza.folios.add(matching_folio)
                     except Exception as e:
                         logger.warning(
@@ -213,7 +212,7 @@ def manuscript_stanzas(request, siglum):
             paired_books[book_number].append(stanza_group)
 
     # Get all manuscripts for the dropdown
-    manuscripts = SingleManuscript.objects.all()
+    manuscripts = SingleManuscript.objects.select_related("library").all()
 
     # Count the total stanzas we're sending to the template
     total_stanzas = sum(len(book) for book in paired_books.values())
@@ -569,52 +568,22 @@ def stanzas(request: HttpRequest):
             # Check if this is a new folio by looking at the first stanza's folios
             if original_stanzas:
                 # Get the first stanza's folios ordered by folio_number
-                stanza_folios = original_stanzas[0].folios.order_by("folio_number")
+                stanza_folios = sorted(original_stanzas[0].folios.all(), key=lambda f: f.folio_number)
 
                 # If the stanza has any folios and the current folio has changed
-                if stanza_folios.exists() and (
-                    current_folio is None or stanza_folios.first() != current_folio
-                ):
-                    current_folio = stanza_folios.first()
+                if stanza_folios and (current_folio is None or stanza_folios[0] != current_folio):
+                    current_folio = stanza_folios[0]
                     stanza_group["new_folio"] = True
                     stanza_group["show_viewer"] = (
                         True  # Only show viewer for new folios
                     )
                     # Optionally add information about all folios this stanza appears on
-                    stanza_group["folios"] = list(
-                        stanza_folios.values_list("folio_number", flat=True)
-                    )
+                    stanza_group["folios"] = [f.folio_number for f in stanza_folios]
                 else:
                     stanza_group["new_folio"] = False
 
             paired_books[book_number].append(stanza_group)
-    # paired_books = {}
-    # for book_number, stanza_dict in books.items():
-    #     paired_books[book_number] = []
-    #     current_folio = None
-    #
-    #     for stanza_number, original_stanzas in stanza_dict.items():
-    #         # Get corresponding translated stanzas
-    #         translated_stanza_group = translated_books.get(book_number, {}).get(
-    #             stanza_number, []
-    #         )
-    #
-    #         # Add folio information
-    #         stanza_group = {
-    #             "original": original_stanzas,
-    #             "translated": translated_stanza_group,
-    #         }
-    #
-    #         # Check if this is a new folio
-    #         if original_stanzas and original_stanzas[0].related_folio != current_folio:
-    #             current_folio = original_stanzas[0].related_folio
-    #             stanza_group["new_folio"] = True
-    #             stanza_group["show_viewer"] = True  # Only show viewer for new folios
-    #         else:
-    #             stanza_group["new_folio"] = False
-    #
-    #         paired_books[book_number].append(stanza_group)
-    #
+
     manuscript_data = {
         "iiif_url": (
             default_manuscript.iiif_url
@@ -722,18 +691,14 @@ def manuscripts(request: HttpRequest):
             # Check if this is a new folio by looking at the first stanza's folios
             if original_stanzas:
                 # Get the first stanza's folios ordered by folio_number
-                stanza_folios = original_stanzas[0].folios.order_by("folio_number")
+                stanza_folios = sorted(original_stanzas[0].folios.all(), key=lambda f: f.folio_number)
 
                 # If the stanza has any folios and the current folio has changed
-                if stanza_folios.exists() and (
-                    current_folio is None or stanza_folios.first() != current_folio
-                ):
-                    current_folio = stanza_folios.first()
+                if stanza_folios and (current_folio is None or stanza_folios[0] != current_folio):
+                    current_folio = stanza_folios[0]
                     stanza_pair["new_folio"] = True
                     # Add information about all folios this stanza appears on
-                    stanza_pair["folios"] = list(
-                        stanza_folios.values_list("folio_number", flat=True)
-                    )
+                    stanza_pair["folios"] = [f.folio_number for f in stanza_folios]
 
             paired_books[book_number].append(stanza_pair)
 
@@ -831,33 +796,6 @@ def manuscript(request: HttpRequest, siglum: str):
         },
     )
 
-
-# def manuscript(request: HttpRequest, siglum: str):
-#     get_manuscript = get_object_or_404(SingleManuscript, siglum=siglum)
-#     folios = get_manuscript.folio_set.prefetch_related("locations_mentioned").all()
-#
-#     # Fetch related LocationAlias objects for each location mentioned in the folios
-#     for folio in folios:
-#         for location in folio.locations_mentioned.all():
-#             alias = (
-#                 LocationAlias.objects.filter(location=location)
-#                 .values(
-#                     "placename_modern",
-#                     "placename_from_mss",
-#                 )
-#                 .first()
-#             )
-#             location.alias = alias
-#
-#     return render(
-#         request,
-#         "manuscript_single.html",
-#         {
-#             "manuscript": get_manuscript,
-#             "folios": folios,
-#             "iiif_manifest": get_manuscript.iiif_url,
-#         },
-#     )
 
 
 # Add this utility function to generate toponym slugs consistently
