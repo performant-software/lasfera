@@ -345,7 +345,19 @@ def set_language_to_english(modeladmin, request, queryset):
     queryset.update(language="en")
 
 
-class StanzaAdminForm(forms.ModelForm):
+class StripDivMixin:
+    def clean_stanza_text(self):
+        # if the entire content is wrapped in a single <div>, unwrap it
+        stanza_text = self.cleaned_data["stanza_text"]
+        soup = BeautifulSoup(stanza_text, "html.parser")
+
+        if len(soup.contents) == 1 and soup.contents[0].name == "div":
+            soup.contents[0].unwrap()
+
+        return str(soup).strip()
+
+
+class StanzaAdminForm(forms.ModelForm, StripDivMixin):
     class Meta:
         model = Stanza
         fields = "__all__"
@@ -386,7 +398,7 @@ class StanzaAdmin(admin.ModelAdmin):
     formatted_stanza_text.short_description = "Stanza Text"
 
 
-class StanzaTranslatedAdminForm(forms.ModelForm):
+class StanzaTranslatedAdminForm(forms.ModelForm, StripDivMixin):
     class Meta:
         model = StanzaTranslated
         fields = "__all__"
