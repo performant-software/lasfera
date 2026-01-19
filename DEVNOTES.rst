@@ -29,7 +29,6 @@ The heart of the application, handling manuscript data and textual variants.
 - ``Library``: Manuscript holding institutions
 - ``Codex``: Individual manuscript records
 - ``Stanza``: Text units with versioning
-- ``StanzaVariant``: Textual variations between manuscripts
 - ``StanzaTranslated``: Translated versions of stanzas
 - ``Folio``: Manuscript page/folio information
 - ``SingleManuscript``: Complete manuscript entities
