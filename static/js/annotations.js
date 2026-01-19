@@ -159,43 +159,54 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         const annotationId = element.getAttribute("data-annotation-id");
+        const annotationType = element.getAttribute("data-annotation-type");
 
-    // Create popup
-        const popup = document.createElement("div");
-        popup.className = "annotation-popup";
-        popup.innerHTML = '<div class="annotation-loading">Loading...</div>';
-        document.body.appendChild(popup);
+        const typeMap = {
+            "note": "Editorial Note",
+            "reference": "Cross Reference",
+            "variant": "Textual Variant",
+        }
 
-    // Position popup
-        positionPopup(popup, element);
+        // Create popup for non-variant annotations (variants handled elsewhere)
+        if (annotationType !== "variant") {
+            const popup = document.createElement("div");
+            popup.className = "annotation-popup";
+            popup.dataset.annotationId = annotationId;
+            popup.dataset.annotationType = annotationType;
+            popup.innerHTML = '<div class="annotation-loading">Loading...</div>';
+            document.body.appendChild(popup);
 
-    // Show popup
-        setTimeout(() => popup.classList.add("active"), 10);
-
-    // Store as active popup
-        activePopup = popup;
-
-        fetch(`/text-annotations/annotation/${annotationId}/`)
-          .then((response) => {
-            if (!response.ok) throw new Error("Network response was not ok");
-            return response.json();
-          })
-          .then((data) => {
-            popup.innerHTML = `
-                    <div class="annotation-type">${data.annotation_type}</div>
-                    <div class="annotation-content">${data.annotation}</div>
-                `;
-        // Reposition after content loaded
+            // Position popup
             positionPopup(popup, element);
-          })
-          .catch((error) => {
-            console.error("Error loading annotation:", error);
-            popup.innerHTML = `
-                    <div class="annotation-content text-red-500">
-                        Failed to load annotation
-                    </div>
-                `;
-          });
+
+            // Show popup
+            setTimeout(() => popup.classList.add("active"), 10);
+
+            // Store as active popup
+            activePopup = popup;
+
+            fetch(`/text-annotations/annotation/${annotationType}/${annotationId}/`)
+            .then((response) => {
+                if (!response.ok) throw new Error("Network response was not ok");
+                return response.json();
+            })
+            .then((data) => {
+                popup.innerHTML = `
+                        <div class="annotation-type">${typeMap[data.annotation_type] || data.annotation_type}</div>
+                        <div class="annotation-content">${data.annotation}</div>
+                    `;
+                // Reposition after content loaded
+                positionPopup(popup, element);
+            })
+            .catch((error) => {
+                console.error("Error loading annotation:", error);
+                popup.innerHTML = `
+                        <div class="annotation-content text-red-500">
+                            Failed to load annotation
+                        </div>
+                    `;
+            });
+        }
       };
 
   // Close popup when clicking outside
@@ -222,9 +233,7 @@ document.addEventListener("DOMContentLoaded", function () {
       window.addEventListener("scroll", function () {
         if (activePopup) {
           const annotatedElement = document.querySelector(
-            '.annotated-text[data-annotation-id="' +
-            activePopup.dataset.annotationId +
-            '"]',
+            `.annotated-text[data-annotation-id="${activePopup.dataset.annotationId}"][data-annotation-type="${activePopup.dataset.annotationType}"]`
           );
           if (annotatedElement) {
             positionPopup(activePopup, annotatedElement);
@@ -236,9 +245,7 @@ document.addEventListener("DOMContentLoaded", function () {
       window.addEventListener("resize", function () {
         if (activePopup) {
           const annotatedElement = document.querySelector(
-            '.annotated-text[data-annotation-id="' +
-            activePopup.dataset.annotationId +
-            '"]',
+            `.annotated-text[data-annotation-id="${activePopup.dataset.annotationId}"][data-annotation-type="${activePopup.dataset.annotationType}"]`
           );
           if (annotatedElement) {
             positionPopup(activePopup, annotatedElement);
@@ -268,6 +275,7 @@ function annotateText(text, annotations) {
         
         const annotatedHtml = `<span class="annotated-text" 
             data-annotation-id="${ann.id}" 
+            data-annotation-type="${ann.annotation_type}"
             onclick="showAnnotation(event, this)">${annotatedPart}</span>`;
             
         result = before + annotatedHtml + after;

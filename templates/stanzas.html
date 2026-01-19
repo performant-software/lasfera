@@ -221,7 +221,7 @@
                               </a>
                             </span>
                             <span class="flex-1 pl-4">
-                              {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations.all|safe }}
+                              {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
                             </span>
                           </div>
                         </div>
@@ -242,7 +242,7 @@
                               </a>
                             </span>
                             <span class="flex-1 pl-4">
-                              {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations.all|safe }}
+                              {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
                             </span>
                           </div>
                         </div>
@@ -287,6 +287,7 @@
   <script src="https://cdn.jsdelivr.net/npm/tify@0.31.0/dist/tify.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tify@0.31.0/dist/tify.css">
   <script src="{% static 'js/annotations.js' %}"></script>
+  <script src="{% static 'js/variant_annotations.js' %}"></script>
   <script src="{% static 'js/tify-sync.js' %}"></script>
   <script src="{% static 'js/stanza.js' %}"></script>
 {% endblock scripts %}

@@ -1,3 +1,4 @@
+from itertools import chain
 import logging
 import re
 from typing import List, Tuple
@@ -367,7 +368,18 @@ class ViewerNote(models.Model):
         return "Viewer Note"
 
 
-
+class AnnotatableMixin:
+    @property
+    def annotations(self):
+        """
+        Combines the related annotation instances into a single list
+        for templates.
+        """
+        return chain(
+            self.editorial_notes.all(),
+            self.cross_references.all(),
+            self.textual_variants.all(),
+        )
 
 
 class Stanza(models.Model):
@@ -406,8 +418,20 @@ class Stanza(models.Model):
     language = models.CharField(
         max_length=2, choices=STANZA_LANGUAGE, blank=True, null=True
     )
-    annotations = GenericRelation(
-        "textannotation.TextAnnotation",
+    editorial_notes = GenericRelation(
+        "textannotation.EditorialNote",
+        content_type_field="content_type",
+        object_id_field="object_id",
+        related_query_name="stanza",
+    )
+    cross_references = GenericRelation(
+        "textannotation.CrossReference",
+        content_type_field="content_type",
+        object_id_field="object_id",
+        related_query_name="stanza",
+    )
+    textual_variants = GenericRelation(
+        "textannotation.TextualVariant",
         content_type_field="content_type",
         object_id_field="object_id",
         related_query_name="stanza",
@@ -489,7 +513,7 @@ class Stanza(models.Model):
         ordering = ["id"]
 
 
-class StanzaTranslated(models.Model):
+class StanzaTranslated(models.Model, AnnotatableMixin):
     """This model holds the English version of the stanzas."""
 
     id = models.AutoField(primary_key=True)
@@ -518,8 +542,20 @@ class StanzaTranslated(models.Model):
     language = models.CharField(
         max_length=2, choices=Stanza.STANZA_LANGUAGE, blank=True, null=True
     )
-    annotations = GenericRelation(
-        "textannotation.TextAnnotation",
+    editorial_notes = GenericRelation(
+        "textannotation.EditorialNote",
+        content_type_field="content_type",
+        object_id_field="object_id",
+        related_query_name="stanza_translated",
+    )
+    cross_references = GenericRelation(
+        "textannotation.CrossReference",
+        content_type_field="content_type",
+        object_id_field="object_id",
+        related_query_name="stanza_translated",
+    )
+    textual_variants = GenericRelation(
+        "textannotation.TextualVariant",
         content_type_field="content_type",
         object_id_field="object_id",
         related_query_name="stanza_translated",
@@ -533,13 +569,7 @@ class StanzaTranslated(models.Model):
         verbose_name_plural = "Stanza translations"
 
 
-# class FolioStanzaMixin:
-#     def get_stanzas(self) -> List["Stanza"]:
-#         """Get all stanzas that appear on this folio in order."""
-#         return get_stanzas_in_folio(self)
-
-
-class Folio(models.Model):  # (FolioStanzaMixin, models.Model):
+class Folio(models.Model):
     """This provides a way to collect several stanzas onto a single page, and associate them with a single manuscript."""
 
     FOLIO_MAP_CHOICES = (
@@ -673,7 +703,8 @@ class SingleManuscript(models.Model):
         if self.siglum:
             return self.siglum
         else:
-            return "No siglum provided"
+            no_siglum = "No siglum provided"
+            return f"{no_siglum} ({self.shelfmark})" if self.shelfmark else no_siglum
 
     def has_pdf_or_images(self):
         if self.photographs:
