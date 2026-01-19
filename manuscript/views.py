@@ -1,18 +1,15 @@
-import json
+from itertools import chain
 import logging
 import os
 import random
-import re
 from collections import defaultdict
 from html import unescape
-from urllib.parse import urlparse
 
 import requests
-from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.staticfiles import finders
 from django.core.cache import cache
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, Prefetch
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.templatetags.static import static
@@ -30,11 +27,10 @@ from manuscript.models import (
     Stanza,
     StanzaTranslated,
     line_code_to_numeric,
-    parse_line_code,
 )
 from manuscript.serializers import SingleManuscriptSerializer, ToponymSerializer
 from pages.models import AboutPage, SitePage
-from textannotation.models import TextAnnotation
+from textannotation.models import CrossReference, EditorialNote, TextualVariant
 
 logger = logging.getLogger(__name__)
 
@@ -96,11 +92,30 @@ def manuscript_stanzas(request, siglum):
             )
             stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
 
+    # Prefetch for efficiency
+    stanzas = stanzas.prefetch_related(
+        "folios",
+        "editorial_notes",
+        "cross_references",
+        Prefetch(
+            "textual_variants", 
+            queryset=TextualVariant.objects.filter(manuscript=manuscript).select_related("manuscript"),
+        )
+    )
     logger.info(f"Found {stanzas.count()} total stanzas")
 
     # Get translated stanzas for all stanzas
     translated_stanzas = StanzaTranslated.objects.filter(stanza__in=stanzas).distinct()
+    translated_stanzas = translated_stanzas.prefetch_related(
+        "editorial_notes",
+        "cross_references",
+        Prefetch(
+            "textual_variants", 
+            queryset=TextualVariant.objects.filter(manuscript=manuscript).select_related("manuscript"),
+        )
+    )
     logger.info(f"Found {translated_stanzas.count()} translated stanzas")
+
 
     # Process stanzas into books structure
     books = process_stanzas(stanzas)
@@ -191,6 +206,7 @@ def manuscript_stanzas(request, siglum):
                             matching_folio = line_code_to_folio[stanza_code]
 
                             # If this is a new folio, mark it in the stanza group
+                            existing_folio_ids = {f.id for f in first_stanza.folios.all()}
                             if current_folio is None or matching_folio != current_folio:
                                 current_folio = matching_folio
                                 stanza_group["new_folio"] = True
@@ -200,9 +216,7 @@ def manuscript_stanzas(request, siglum):
                                 )
 
                                 # Associate the stanza with this folio if not already done
-                                if not first_stanza.folios.filter(
-                                    id=matching_folio.id
-                                ).exists():
+                                if matching_folio.id not in existing_folio_ids:
                                     first_stanza.folios.add(matching_folio)
                     except Exception as e:
                         logger.warning(
@@ -213,7 +227,7 @@ def manuscript_stanzas(request, siglum):
             paired_books[book_number].append(stanza_group)
 
     # Get all manuscripts for the dropdown
-    manuscripts = SingleManuscript.objects.all()
+    manuscripts = SingleManuscript.objects.select_related("library").all()
 
     # Count the total stanzas we're sending to the template
     total_stanzas = sum(len(book) for book in paired_books.values())
@@ -249,6 +263,15 @@ def create_annotation(request):
         annotation_type = request.POST.get("annotation_type")
         model_type = request.POST.get("model_type", "stanza")
 
+        TYPE_MAP = {
+            "note": EditorialNote,
+            "reference": CrossReference,
+            "variant": TextualVariant,
+        }
+        AnnotationModel = TYPE_MAP.get(annotation_type)
+        if not AnnotationModel:
+            return JsonResponse({"success": False, "error": "Invalid annotation type"}, status=400)
+
         # Validate required fields
         if not all([object_id, selected_text, annotation_text, annotation_type]):
             missing_fields = [
@@ -273,20 +296,53 @@ def create_annotation(request):
         # Get the appropriate model and object
         if model_type == "stanzatranslated":
             content_type = ContentType.objects.get_for_model(StanzaTranslated)
-            annotated_object = get_object_or_404(StanzaTranslated, id=object_id)
+            get_object_or_404(StanzaTranslated, id=object_id)
         else:
             content_type = ContentType.objects.get_for_model(Stanza)
-            annotated_object = get_object_or_404(Stanza, id=object_id)
+            get_object_or_404(Stanza, id=object_id)
+
+        try:
+            from_pos = int(request.POST.get("from_pos", 0))
+            to_pos = int(request.POST.get("to_pos", 0))
+        except (ValueError, TypeError):
+            from_pos, to_pos = 0, 0
 
         # Create the annotation
-        annotation = TextAnnotation.objects.create(
-            content_type=content_type,
-            object_id=object_id,
-            selected_text=selected_text,
-            annotation=annotation_text,
-            annotation_type=annotation_type,
-            from_pos=request.POST.get("from_pos"),
-            to_pos=request.POST.get("to_pos"),
+        annotation_fields = {
+            "content_type": content_type,
+            "object_id": object_id,
+            "selected_text": selected_text,
+            "annotation": annotation_text,
+            "from_pos": from_pos,
+            "to_pos": to_pos,
+        }
+        # special fields for Variant type
+        if annotation_type == "variant":
+            annotation_fields["editor_initials"] = request.POST.get("editor_initials", "")
+            try:
+                annotation_fields["significance"] = int(request.POST.get("significance", 0))
+            except (ValueError, TypeError):
+                annotation_fields["significance"] = 0
+            variant_id = request.POST.get("variant_id", "").strip()
+            annotation_fields["variant_id"] = variant_id if variant_id else None
+
+            manuscript_id = request.POST.get("manuscript_id")
+            
+            if manuscript_id:
+                # Optional: specific validation that the ID is valid integer
+                try:
+                    annotation_fields["manuscript_id"] = int(manuscript_id)
+                except (ValueError, TypeError):
+                     return JsonResponse(
+                        {"success": False, "error": "Invalid Manuscript"}, 
+                        status=400
+                    )
+            else:
+                # Decide if manuscript is required. If so, return error here.
+                annotation_fields["manuscript_id"] = None
+
+        annotation = AnnotationModel.objects.create(
+            **annotation_fields
         )
 
         return JsonResponse(
@@ -306,9 +362,11 @@ def create_annotation(request):
 def get_annotations(request, stanza_id):
     try:
         stanza = Stanza.objects.get(id=stanza_id)
-        annotations = TextAnnotation.objects.filter(
-            content_type=ContentType.objects.get_for_model(Stanza), object_id=stanza.id
-        )
+        notes = stanza.editorial_notes.all()
+        refs = stanza.cross_references.all()
+        variants = stanza.textual_variants.all()
+
+        annotations = chain(notes, refs, variants)
 
         return JsonResponse(
             [
@@ -328,20 +386,26 @@ def get_annotations(request, stanza_id):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-def get_annotation(request, annotation_id):
+def get_annotation(request, annotation_type, annotation_id):
+    TYPE_MAP = {
+        "note": EditorialNote,
+        "reference": CrossReference,
+        "variant": TextualVariant,
+    }
     try:
-        annotation = get_object_or_404(TextAnnotation, id=annotation_id)
+        AnnotationModel = TYPE_MAP.get(annotation_type)
+        annotation = get_object_or_404(AnnotationModel, id=annotation_id)
 
         data = {
             "id": annotation.id,
             "selected_text": annotation.selected_text,
             "annotation": annotation.annotation,
-            "annotation_type": annotation.get_annotation_type_display(),
+            "annotation_type": annotation_type,
         }
 
         return JsonResponse(data)
 
-    except TextAnnotation.DoesNotExist:
+    except AnnotationModel.DoesNotExist:
         logger.error(f"Annotation {annotation_id} not found")
         return JsonResponse({"error": "Annotation not found"}, status=404)
     except Exception as e:
@@ -516,13 +580,27 @@ def get_canvas_url_for_folio(manuscript_manifest, folio):
 def stanzas(request: HttpRequest):
     folios = Folio.objects.all()
     stanzas = (
-        Stanza.objects.prefetch_related("annotations")
+        Stanza.objects.prefetch_related(
+            "editorial_notes",
+            "cross_references",
+            Prefetch(
+                "textual_variants", 
+                queryset=TextualVariant.objects.select_related("manuscript")
+            )
+        )
         .all()
         .order_by("stanza_line_code_starts")
     )
 
     translated_stanzas = (
-        StanzaTranslated.objects.prefetch_related("annotations")
+        StanzaTranslated.objects.prefetch_related(
+            "editorial_notes",
+            "cross_references",
+            Prefetch(
+                "textual_variants", 
+                queryset=TextualVariant.objects.select_related("manuscript")
+            )
+        )
         .all()
         .order_by("stanza_line_code_starts")
     )
@@ -569,52 +647,22 @@ def stanzas(request: HttpRequest):
             # Check if this is a new folio by looking at the first stanza's folios
             if original_stanzas:
                 # Get the first stanza's folios ordered by folio_number
-                stanza_folios = original_stanzas[0].folios.order_by("folio_number")
+                stanza_folios = sorted(original_stanzas[0].folios.all(), key=lambda f: f.folio_number)
 
                 # If the stanza has any folios and the current folio has changed
-                if stanza_folios.exists() and (
-                    current_folio is None or stanza_folios.first() != current_folio
-                ):
-                    current_folio = stanza_folios.first()
+                if stanza_folios and (current_folio is None or stanza_folios[0] != current_folio):
+                    current_folio = stanza_folios[0]
                     stanza_group["new_folio"] = True
                     stanza_group["show_viewer"] = (
                         True  # Only show viewer for new folios
                     )
                     # Optionally add information about all folios this stanza appears on
-                    stanza_group["folios"] = list(
-                        stanza_folios.values_list("folio_number", flat=True)
-                    )
+                    stanza_group["folios"] = [f.folio_number for f in stanza_folios]
                 else:
                     stanza_group["new_folio"] = False
 
             paired_books[book_number].append(stanza_group)
-    # paired_books = {}
-    # for book_number, stanza_dict in books.items():
-    #     paired_books[book_number] = []
-    #     current_folio = None
-    #
-    #     for stanza_number, original_stanzas in stanza_dict.items():
-    #         # Get corresponding translated stanzas
-    #         translated_stanza_group = translated_books.get(book_number, {}).get(
-    #             stanza_number, []
-    #         )
-    #
-    #         # Add folio information
-    #         stanza_group = {
-    #             "original": original_stanzas,
-    #             "translated": translated_stanza_group,
-    #         }
-    #
-    #         # Check if this is a new folio
-    #         if original_stanzas and original_stanzas[0].related_folio != current_folio:
-    #             current_folio = original_stanzas[0].related_folio
-    #             stanza_group["new_folio"] = True
-    #             stanza_group["show_viewer"] = True  # Only show viewer for new folios
-    #         else:
-    #             stanza_group["new_folio"] = False
-    #
-    #         paired_books[book_number].append(stanza_group)
-    #
+
     manuscript_data = {
         "iiif_url": (
             default_manuscript.iiif_url
@@ -677,7 +725,12 @@ def manuscripts(request: HttpRequest):
     """View for displaying all manuscripts with proper folio grouping"""
     folios = Folio.objects.all()
     stanzas = (
-        Stanza.objects.prefetch_related("annotations", "folios")
+        Stanza.objects.prefetch_related(
+            "folios",
+            "editorial_notes",
+            "cross_references",
+            "textual_variants"
+        )
         .all()
         .order_by("stanza_line_code_starts")
     )
@@ -722,18 +775,14 @@ def manuscripts(request: HttpRequest):
             # Check if this is a new folio by looking at the first stanza's folios
             if original_stanzas:
                 # Get the first stanza's folios ordered by folio_number
-                stanza_folios = original_stanzas[0].folios.order_by("folio_number")
+                stanza_folios = sorted(original_stanzas[0].folios.all(), key=lambda f: f.folio_number)
 
                 # If the stanza has any folios and the current folio has changed
-                if stanza_folios.exists() and (
-                    current_folio is None or stanza_folios.first() != current_folio
-                ):
-                    current_folio = stanza_folios.first()
+                if stanza_folios and (current_folio is None or stanza_folios[0] != current_folio):
+                    current_folio = stanza_folios[0]
                     stanza_pair["new_folio"] = True
                     # Add information about all folios this stanza appears on
-                    stanza_pair["folios"] = list(
-                        stanza_folios.values_list("folio_number", flat=True)
-                    )
+                    stanza_pair["folios"] = [f.folio_number for f in stanza_folios]
 
             paired_books[book_number].append(stanza_pair)
 
@@ -831,33 +880,6 @@ def manuscript(request: HttpRequest, siglum: str):
         },
     )
 
-
-# def manuscript(request: HttpRequest, siglum: str):
-#     get_manuscript = get_object_or_404(SingleManuscript, siglum=siglum)
-#     folios = get_manuscript.folio_set.prefetch_related("locations_mentioned").all()
-#
-#     # Fetch related LocationAlias objects for each location mentioned in the folios
-#     for folio in folios:
-#         for location in folio.locations_mentioned.all():
-#             alias = (
-#                 LocationAlias.objects.filter(location=location)
-#                 .values(
-#                     "placename_modern",
-#                     "placename_from_mss",
-#                 )
-#                 .first()
-#             )
-#             location.alias = alias
-#
-#     return render(
-#         request,
-#         "manuscript_single.html",
-#         {
-#             "manuscript": get_manuscript,
-#             "folios": folios,
-#             "iiif_manifest": get_manuscript.iiif_url,
-#         },
-#     )
 
 
 # Add this utility function to generate toponym slugs consistently

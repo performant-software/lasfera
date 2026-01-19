@@ -1,6 +1,7 @@
+from bs4 import BeautifulSoup
+from django import forms
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
-from django.urls import reverse
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
@@ -18,12 +19,10 @@ from manuscript.models import (
     SingleManuscript,
     Stanza,
     StanzaTranslated,
-    StanzaVariant,
     TextDecoration,
     ViewerNote,
 )
 from manuscript.resources import (
-    EditorialStatusResource,
     ReferenceResource,
     SingleManuscriptResource,
     FolioResource,
@@ -31,7 +30,7 @@ from manuscript.resources import (
     LocationAliasResource,
     LineCodeResource,
 )
-from textannotation.models import TextAnnotation
+from textannotation.models import CrossReference, EditorialNote, TextualVariant
 
 
 # Inline models --------------------------------------------
@@ -43,30 +42,7 @@ class StanzaInline(admin.StackedInline):
         "stanza_line_code_ends",
         "stanza_text",
         "stanza_notes",
-        "add_stanza_variant_link",
-        "display_stanza_variants",
     )
-    readonly_fields = (
-        "add_stanza_variant_link",
-        "display_stanza_variants",
-    )
-
-    def add_stanza_variant_link(self, obj):
-        url = reverse("admin:manuscript_stanzavariant_add") + "?stanza=" + str(obj.id)
-        return format_html('<a href="{}">Add Stanza Variant</a>', url)
-
-    add_stanza_variant_link.short_description = "Add Stanza Variant"
-
-    def display_stanza_variants(self, obj):
-        variants = ["- {}".format(variant) for variant in obj.stanzavariant_set.all()]
-        return format_html("<br>".join(variants))
-
-    display_stanza_variants.short_description = "Stanza Variants"
-
-
-class StanzaVariantInline(admin.StackedInline):
-    model = StanzaVariant
-    extra = 1
 
 
 class FolioInline(admin.StackedInline):
@@ -126,10 +102,31 @@ class AuthorityFileInline(admin.TabularInline):
     extra = 1
 
 
-class TextAnnotationInline(GenericTabularInline):
-    model = TextAnnotation
+class EditorialNoteInline(GenericTabularInline):
+    model = EditorialNote
     extra = 0
-    fields = ("selected_text", "annotation", "annotation_type")
+    fields = ("selected_text", "annotation")
+    readonly_fields = ("selected_text",)
+
+
+class CrossReferenceInline(GenericTabularInline):
+    model = CrossReference
+    extra = 0
+    fields = ("selected_text", "annotation")
+    readonly_fields = ("selected_text",)
+
+
+class TextualVariantInline(GenericTabularInline):
+    model = TextualVariant
+    extra = 0
+    fields = (
+        "selected_text",
+        "annotation",
+        "manuscript",
+        "significance",
+        "notes",
+        "variant_id",
+    )
     readonly_fields = ("selected_text",)
 
 
@@ -144,7 +141,9 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
         ViewerNotesInline,
         EditorialStatusInline,
         FolioInline,
-        TextAnnotationInline,
+        EditorialNoteInline,
+        CrossReferenceInline,
+        TextualVariantInline,
     ]
     list_display = (
         "siglum",
@@ -248,33 +247,6 @@ class FolioAdmin(ImportExportModelAdmin):
         return True  # You might want to add a custom deletion warning/confirmation
 
 
-# class FolioAdmin(ImportExportModelAdmin):
-#     inlines = [
-#         StanzaInline,
-#     ]
-#     list_filter = ("manuscript",)
-#     list_display = (
-#         "folio_number",
-#         "manuscript",
-#     )
-#     search_fields = (
-#         "folio_number",
-#         "manuscript__siglum",
-#     )
-#     resource_class = FolioResource
-#
-#     def add_link_to_edit_stanzas(self, obj):
-#         url = reverse("admin:manuscript_stanza_add") + "?folio=" + str(obj.id)
-#         return format_html('<a href="{}">Add Stanza</a>', url)
-#
-#     def manuscript(self, obj):
-#         url = reverse(
-#             "admin:manuscript_singlemanuscript_change", args=[obj.singlemanuscript.id]
-#         )
-#         return format_html('<a href="{}">{}</a>', url, obj.singlemanuscript.siglum)
-#
-
-
 class ReferenceAdmin(ImportExportModelAdmin):
     list_display = ("reference", "bert")
     resource_class = ReferenceResource
@@ -283,11 +255,6 @@ class ReferenceAdmin(ImportExportModelAdmin):
 class LibraryAdmin(admin.ModelAdmin):
     list_display = ("library", "city", "id")
     list_filter = ("city",)
-
-
-# class EditorialStatusAdmin(admin.ModelAdmin):
-#     list_display = ("editorial_priority", "spatial_priority")
-#     resource_class = EditorialStatusResource
 
 
 class CodexAdmin(admin.ModelAdmin):
@@ -362,8 +329,6 @@ class LocationAliasAdmin(ImportExportModelAdmin):
         "placename_from_mss",
         "placename_ancient",
         "placename_standardized",
-        # "folio",
-        # "manuscript",
     )
     list_filter = ("location",)
     search_fields = ("placename_alias",)
@@ -380,8 +345,19 @@ def set_language_to_english(modeladmin, request, queryset):
     queryset.update(language="en")
 
 
+class StanzaAdminForm(forms.ModelForm):
+    class Meta:
+        model = Stanza
+        fields = "__all__"
+
+
 class StanzaAdmin(admin.ModelAdmin):
-    inlines = [TextAnnotationInline, StanzaVariantInline]
+    form = StanzaAdminForm
+    inlines = [
+        EditorialNoteInline,
+        CrossReferenceInline,
+        TextualVariantInline,
+    ]
     list_display = (
         "stanza_line_code_starts",
         "formatted_stanza_text",
@@ -395,7 +371,13 @@ class StanzaAdmin(admin.ModelAdmin):
     actions = [set_language_to_italian, set_language_to_english]
 
     class Media:
-        css = {"all": ("css/text_annotations.css",)}
+        css = {
+            "all": (
+                "css/text_annotations.css",
+                "fontawesomefree/css/fontawesome.css",
+                "fontawesomefree/css/solid.css",
+            )
+        }
         js = ("js/text_annotations.js",)
 
     def formatted_stanza_text(self, obj):
@@ -404,22 +386,27 @@ class StanzaAdmin(admin.ModelAdmin):
     formatted_stanza_text.short_description = "Stanza Text"
 
 
-class StanzaVariantAdmin(admin.ModelAdmin):
-    def get_changeform_initial_data(self, request):
-        initial = super().get_changeform_initial_data(request)
-        if "stanza" in request.GET:
-            initial["stanza"] = request.GET["stanza"]
-        return initial
+class StanzaTranslatedAdminForm(forms.ModelForm):
+    class Meta:
+        model = StanzaTranslated
+        fields = "__all__"
 
 
 class StanzaTranslatedAdmin(admin.ModelAdmin):
+    form = StanzaTranslatedAdminForm
     list_display = ("stanza", "stanza_text", "language")
     search_fields = ("stanza", "stanza_text")
     list_filter = ("language",)
-    inlines = [TextAnnotationInline]
+    inlines = [EditorialNoteInline, CrossReferenceInline, TextualVariantInline]
 
     class Media:
-        css = {"all": ("css/text_annotations.css",)}
+        css = {
+            "all": (
+                "css/text_annotations.css",
+                "fontawesomefree/css/fontawesome.css",
+                "fontawesomefree/css/solid.css",
+            )
+        }
         js = ("js/text_annotations.js",)
 
 
@@ -451,7 +438,6 @@ admin.site.register(Folio, FolioAdmin)
 admin.site.register(SingleManuscript, SingleManuscriptAdmin)
 admin.site.register(Stanza, StanzaAdmin)
 admin.site.register(StanzaTranslated, StanzaTranslatedAdmin)
-admin.site.register(TextAnnotation)
 
 admin.site.site_header = "La Sfera Admin"
 admin.site.site_title = "La Sfera Admin Portal"
