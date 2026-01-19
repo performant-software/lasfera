@@ -367,73 +367,7 @@ class ViewerNote(models.Model):
         return "Viewer Note"
 
 
-class StanzaVariant(models.Model):
-    """Notes about textual variants within a stanza"""
 
-    AVAIL_LANGUAGE = (
-        ("en", "English"),
-        ("it", "Italian"),
-    )
-
-    # TODO: Ability to have variation in lines
-    id = models.AutoField(primary_key=True)
-    stanza_variation = models.TextField(
-        max_length=500,
-        blank=True,
-        null=True,
-        verbose_name="Significant Variations",
-        help_text="The variation in the stanza.",
-    )
-    stanza_variation_line_code_starts = models.CharField(
-        blank=True,
-        null=True,
-        validators=[validate_line_number_variant_code],
-        max_length=20,
-        help_text="Stanza variant line code in the form of '01.01.01a'.",
-        verbose_name="Variant line code",
-    )
-    stanza = models.ForeignKey(
-        "Stanza",
-        on_delete=models.CASCADE,
-        blank=True,
-        null=True,
-        editable=False,
-    )
-
-    def provide_snippet_of_stanza(self):
-        return self.stanza.stanza_variation[:100]
-
-    def parse_line_code(self, code):
-        """Parse a line code into book, stanza, line components"""
-        if not code:
-            return None
-        parts = code.split(".")
-        return {"book": int(parts[0]), "stanza": int(parts[1]), "line": int(parts[2])}
-
-    def save(self, *args, **kwargs):
-        # we trim the letter code off the stanza_variation_line_code_starts
-        # so we can look for the FK to the Stanza
-        try:
-            stanza_line_code_starts = self.stanza_variation_line_code_starts[:-1]
-        except TypeError:
-            stanza_line_code_starts = None
-
-        try:
-            self.stanza = Stanza.objects.get(
-                stanza_line_code_starts=stanza_line_code_starts
-            )
-        except ObjectDoesNotExist:
-            pass
-
-        super().save(*args, **kwargs)
-
-    def __str__(self) -> str:
-        return (
-            "Stanza "
-            + self.stanza_variation_line_code_starts
-            + " associated with "
-            + self.stanza.stanza_line_code_starts
-        )
 
 
 class Stanza(models.Model):
