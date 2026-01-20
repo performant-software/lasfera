@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.contrib.contenttypes.models import ContentType
 from django.db.models.functions import Coalesce
@@ -5,6 +6,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
+from common.admin import StripDivMixin
 from textannotation.models import (
     CrossReference,
     EditorialNote,
@@ -98,8 +100,21 @@ class BaseAnnotationAdminMixin:
         )
 
 
+class TextualVariantAdminForm(forms.ModelForm, StripDivMixin):
+    class Meta:
+        model = TextualVariant
+        fields = "__all__"
+
+    def clean_notes(self):
+        return self.strip_outer_div("notes")
+
+    def clean_annotation(self):
+        return self.strip_outer_div("annotation")
+
+
 @admin.register(TextualVariant)
 class TextualVariantAdmin(BaseAnnotationAdminMixin, ImportExportModelAdmin):
+    form = TextualVariantAdminForm
     list_display = (
         "variant_id",
         "manuscript",
@@ -114,11 +129,29 @@ class TextualVariantAdmin(BaseAnnotationAdminMixin, ImportExportModelAdmin):
         return obj.annotation
 
 
+class CrossReferenceAdminForm(forms.ModelForm, StripDivMixin):
+    class Meta:
+        model = CrossReference
+        fields = "__all__"
+
+    def clean_annotation(self):
+        return self.strip_outer_div("annotation")
+
+
 @admin.register(CrossReference)
 class CrossReferenceAdmin(BaseAnnotationAdminMixin, admin.ModelAdmin):
-    pass
+    form = CrossReferenceAdminForm
+
+
+class EditorialNoteAdminForm(forms.ModelForm, StripDivMixin):
+    class Meta:
+        model = EditorialNote
+        fields = "__all__"
+
+    def clean_annotation(self):
+        return self.strip_outer_div("annotation")
 
 
 @admin.register(EditorialNote)
 class EditorialNoteAdmin(BaseAnnotationAdminMixin, admin.ModelAdmin):
-    pass
+    form = EditorialNoteAdminForm

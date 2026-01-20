@@ -1,10 +1,10 @@
-from bs4 import BeautifulSoup
 from django import forms
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
+from common.admin import StripDivMixin
 from manuscript.models import (
     AuthorityFile,
     Codex,
@@ -30,6 +30,7 @@ from manuscript.resources import (
     LocationAliasResource,
     LineCodeResource,
 )
+from textannotation.admin import CrossReferenceAdminForm, EditorialNoteAdminForm, TextualVariantAdminForm
 from textannotation.models import CrossReference, EditorialNote, TextualVariant
 
 
@@ -107,6 +108,7 @@ class EditorialNoteInline(GenericTabularInline):
     extra = 0
     fields = ("selected_text", "annotation")
     readonly_fields = ("selected_text",)
+    form = EditorialNoteAdminForm
 
 
 class CrossReferenceInline(GenericTabularInline):
@@ -114,6 +116,7 @@ class CrossReferenceInline(GenericTabularInline):
     extra = 0
     fields = ("selected_text", "annotation")
     readonly_fields = ("selected_text",)
+    form = CrossReferenceAdminForm
 
 
 class TextualVariantInline(GenericTabularInline):
@@ -128,6 +131,7 @@ class TextualVariantInline(GenericTabularInline):
         "variant_id",
     )
     readonly_fields = ("selected_text",)
+    form = TextualVariantAdminForm
 
 
 # Custom admin models --------------------------------------------
@@ -345,22 +349,13 @@ def set_language_to_english(modeladmin, request, queryset):
     queryset.update(language="en")
 
 
-class StripDivMixin:
-    def clean_stanza_text(self):
-        # if the entire content is wrapped in a single <div>, unwrap it
-        stanza_text = self.cleaned_data["stanza_text"]
-        soup = BeautifulSoup(stanza_text, "html.parser")
-
-        if len(soup.contents) == 1 and soup.contents[0].name == "div":
-            soup.contents[0].unwrap()
-
-        return str(soup).strip()
-
-
 class StanzaAdminForm(forms.ModelForm, StripDivMixin):
     class Meta:
         model = Stanza
         fields = "__all__"
+
+    def clean_stanza_text(self):
+        return self.strip_outer_div("stanza_text")
 
 
 class StanzaAdmin(admin.ModelAdmin):
@@ -402,6 +397,9 @@ class StanzaTranslatedAdminForm(forms.ModelForm, StripDivMixin):
     class Meta:
         model = StanzaTranslated
         fields = "__all__"
+
+    def clean_stanza_text(self):
+        return self.strip_outer_div("stanza_text")
 
 
 class StanzaTranslatedAdmin(admin.ModelAdmin):
