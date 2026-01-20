@@ -382,7 +382,7 @@ class AnnotatableMixin:
         )
 
 
-class Stanza(models.Model):
+class Stanza(models.Model, AnnotatableMixin):
     """A stanza from the manuscript."""
 
     STANZA_LANGUAGE = (
