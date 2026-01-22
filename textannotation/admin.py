@@ -7,6 +7,7 @@ from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
 from common.admin import StripDivMixin
+from manuscript.models import SingleManuscript
 from textannotation.models import (
     CrossReference,
     EditorialNote,
@@ -113,10 +114,38 @@ class TextualVariantAdminForm(forms.ModelForm, StripDivMixin):
         return self.strip_outer_div("annotation")
 
 
+class AnnotatedManuscriptFilter(admin.SimpleListFilter):
+    """Sidebar filter for variants by annotated manuscript"""
+
+    title = "manuscript"
+    parameter_name = "manuscript"
+
+    def lookups(self, request, model_admin):
+        # filter the options in the list by which ContentTypes have
+        # actually been annotated
+        annotated_manuscripts = model_admin.model.objects.values_list(
+            "manuscript", flat=True
+        ).distinct()
+        manuscripts = SingleManuscript.objects.filter(id__in=annotated_manuscripts)
+
+        # list filters require tuples like (id, label)
+        return [
+            (man.id, str(man))
+            for man in manuscripts
+        ]
+
+    def queryset(self, request, queryset):
+        # filter the queryset by the selected value
+        if self.value():
+            return queryset.filter(manuscript=self.value())
+        return queryset
+
+
 @admin.register(TextualVariant)
 class TextualVariantAdmin(BaseAnnotationAdminMixin, ImportExportModelAdmin):
     form = TextualVariantAdminForm
     resource_class = TextualVariantResource
+    list_filter = (AnnotatedContentTypeFilter, AnnotatedManuscriptFilter)
     list_display = (
         "variant_id",
         "manuscript",
@@ -128,7 +157,7 @@ class TextualVariantAdmin(BaseAnnotationAdminMixin, ImportExportModelAdmin):
 
     @admin.display
     def variant_text(self, obj):
-        return obj.annotation
+        return obj.annotation or "-"
 
 
 class CrossReferenceAdminForm(forms.ModelForm, StripDivMixin):
