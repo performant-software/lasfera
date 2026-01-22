@@ -155,13 +155,13 @@ function initVariantAnnotations() {
                 return response.json();
             })
             .then(data => {
+                const variantTextEl = data.annotation ? `<p class="mb-1"><strong>${data.line_code}</strong> ${element.textContent}] ${data.annotation} <strong>${data.manuscript}</strong></p>` : '';
+                const additionalNotesEl = data.notes ? `<div class="variant-popup-manuscript">${data.notes}</div>` : '';
                 // Use specific template for variant display
                 popup.innerHTML = `
                     <div class="variant-popup-title">Textual Variant</div>
-                    <div class="variant-popup-content">
-                        <p class="mb-2"><strong>Original text:</strong> "${element.textContent}"</p>
-                        <p class="mb-1"><strong>Variant reading:</strong> "${data.annotation}"</p>
-                    </div>
+                    <div class="variant-popup-content">${variantTextEl}</div>
+                    ${additionalNotesEl}
                 `;
                 
                 // Reposition after content loaded
