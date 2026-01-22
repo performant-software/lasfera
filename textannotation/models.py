@@ -42,12 +42,12 @@ class BaseAnnotation(models.Model):
         ]
 
     def __str__(self):
-        return self.selected_text
+        return self.selected_text or "-"
 
     @property
     def excerpt(self):
         # Truncated annotation content for admin list view
-        return unescape(truncatechars(strip_tags(self.annotation), 48))
+        return unescape(truncatechars(strip_tags(self.annotation or "-"), 48))
 
     @property
     def annotation_type(self):
@@ -111,4 +111,4 @@ class TextualVariant(BaseAnnotation):
     editor_initials = models.CharField(max_length=10, blank=True)
 
     def __str__(self):
-        return self.annotation
+        return self.annotation or "-"

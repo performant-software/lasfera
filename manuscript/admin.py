@@ -30,7 +30,11 @@ from manuscript.resources import (
     LocationAliasResource,
     LineCodeResource,
 )
-from textannotation.admin import CrossReferenceAdminForm, EditorialNoteAdminForm, TextualVariantAdminForm
+from textannotation.admin import (
+    CrossReferenceAdminForm,
+    EditorialNoteAdminForm,
+    TextualVariantAdminForm,
+)
 from textannotation.models import CrossReference, EditorialNote, TextualVariant
 
 
@@ -404,7 +408,7 @@ class StanzaTranslatedAdminForm(forms.ModelForm, StripDivMixin):
 
 class StanzaTranslatedAdmin(admin.ModelAdmin):
     form = StanzaTranslatedAdminForm
-    list_display = ("stanza", "stanza_text", "language")
+    list_display = ("stanza_line_code_starts", "stanza_text", "language")
     search_fields = ("stanza", "stanza_text")
     list_filter = ("language",)
     inlines = [EditorialNoteInline, CrossReferenceInline, TextualVariantInline]

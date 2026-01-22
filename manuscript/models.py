@@ -436,6 +436,9 @@ class Stanza(models.Model, AnnotatableMixin):
         object_id_field="object_id",
         related_query_name="stanza",
     )
+    is_rubric = models.BooleanField(
+        default=False, help_text="Designates this stanza as a rubric/header."
+    )
 
     def __str__(self) -> str:
         if self.stanza_line_code_starts is not None:
@@ -510,7 +513,7 @@ class Stanza(models.Model, AnnotatableMixin):
             )
 
     class Meta:
-        ordering = ["id"]
+        ordering = ("stanza_line_code_starts",)
 
 
 class StanzaTranslated(models.Model, AnnotatableMixin):
@@ -560,6 +563,9 @@ class StanzaTranslated(models.Model, AnnotatableMixin):
         object_id_field="object_id",
         related_query_name="stanza_translated",
     )
+    is_rubric = models.BooleanField(
+        default=False, help_text="Designates this stanza as a rubric/header."
+    )
 
     def __str__(self) -> str:
         return str(self.stanza_text[:100])
@@ -567,6 +573,7 @@ class StanzaTranslated(models.Model, AnnotatableMixin):
     class Meta:
         verbose_name = "Stanza translation"
         verbose_name_plural = "Stanza translations"
+        ordering = ("stanza_line_code_starts",)
 
 
 class Folio(models.Model):

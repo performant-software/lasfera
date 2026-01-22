@@ -227,7 +227,11 @@ def manuscript_stanzas(request, siglum):
             paired_books[book_number].append(stanza_group)
 
     # Get all manuscripts for the dropdown
-    manuscripts = SingleManuscript.objects.select_related("library").all()
+    manuscripts = SingleManuscript.objects.select_related("library").annotate(
+        has_variants=Exists(
+            TextualVariant.objects.filter(manuscript=OuterRef('pk'))
+        )
+    ).all()
 
     # Count the total stanzas we're sending to the template
     total_stanzas = sum(len(book) for book in paired_books.values())
@@ -402,6 +406,11 @@ def get_annotation(request, annotation_type, annotation_id):
             "annotation": annotation.annotation,
             "annotation_type": annotation_type,
         }
+
+        if annotation_type == "variant":
+            data["manuscript"] = annotation.manuscript.siglum
+            data["line_code"] = str(annotation.content_object)
+            data["notes"] = annotation.notes
 
         return JsonResponse(data)
 
