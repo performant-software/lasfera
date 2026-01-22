@@ -436,6 +436,9 @@ class Stanza(models.Model, AnnotatableMixin):
         object_id_field="object_id",
         related_query_name="stanza",
     )
+    is_rubric = models.BooleanField(
+        default=False, help_text="Designates this stanza as a rubric/header."
+    )
 
     def __str__(self) -> str:
         if self.stanza_line_code_starts is not None:
@@ -559,6 +562,9 @@ class StanzaTranslated(models.Model, AnnotatableMixin):
         content_type_field="content_type",
         object_id_field="object_id",
         related_query_name="stanza_translated",
+    )
+    is_rubric = models.BooleanField(
+        default=False, help_text="Designates this stanza as a rubric/header."
     )
 
     def __str__(self) -> str:

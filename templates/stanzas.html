@@ -220,7 +220,7 @@
                                 </span>
                               </a>
                             </span>
-                            <span class="flex-1 pl-4">
+                            <span class="flex-1 pl-4{% if stanza.is_rubric %} text-xl font-bold{% endif %}">
                               {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
                             </span>
                           </div>
@@ -241,7 +241,7 @@
                                 </span>
                               </a>
                             </span>
-                            <span class="flex-1 pl-4">
+                            <span class="flex-1 pl-4{% if stanza.is_rubric %} text-xl font-bold{% endif %}">
                               {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
                             </span>
                           </div>
