@@ -309,6 +309,8 @@ function handleAnnotationClick(event) {
                         <input type="text" id="variant-editor" placeholder="e.g. LI">
                     </div>
                 </div>
+                <label for="variant-notes">Notes</label>
+                <textarea id="variant-notes"></textarea>
             </div>
             <div class="annotation-modal-buttons">
                 <button type="button" class="btn-cancel">Cancel</button>
@@ -355,7 +357,7 @@ function handleAnnotationClick(event) {
         const annotationText = modal.querySelector("#annotation-text").value;
         const annotationType = modal.querySelector("#annotation-type").value;
 
-        if (!annotationText.trim()) {
+        if (!annotationText.trim() && annotationType !== 'variant') {
             alert("Please enter an annotation");
             return;
         }
@@ -385,6 +387,7 @@ function handleAnnotationClick(event) {
             formData.append("significance", modal.querySelector("#variant-significance").value);
             formData.append("variant_id", modal.querySelector("#variant-id").value);
             formData.append("editor_initials", modal.querySelector("#variant-editor").value);
+            formData.append("notes", modal.querySelector("#variant-notes").value);
         }
 
         // Add loading state to save button

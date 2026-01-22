@@ -133,6 +133,7 @@ class TextualVariantInline(GenericTabularInline):
         "significance",
         "notes",
         "variant_id",
+        "editor_initials",
     )
     readonly_fields = ("selected_text",)
     form = TextualVariantAdminForm

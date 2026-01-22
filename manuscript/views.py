@@ -266,6 +266,7 @@ def create_annotation(request):
         annotation_text = request.POST.get("annotation")
         annotation_type = request.POST.get("annotation_type")
         model_type = request.POST.get("model_type", "stanza")
+        notes = request.POST.get("notes")
 
         TYPE_MAP = {
             "note": EditorialNote,
@@ -274,28 +275,33 @@ def create_annotation(request):
         }
         AnnotationModel = TYPE_MAP.get(annotation_type)
         if not AnnotationModel:
-            return JsonResponse({"success": False, "error": "Invalid annotation type"}, status=400)
+            return JsonResponse(
+                {"success": False, "error": "Invalid annotation type"}, status=400
+            )
 
         # Validate required fields
-        if not all([object_id, selected_text, annotation_text, annotation_type]):
-            missing_fields = [
-                field
-                for field, value in {
-                    "stanza_id": object_id,
-                    "selected_text": selected_text,
-                    "annotation": annotation_text,
-                    "annotation_type": annotation_type,
-                }.items()
-                if not value
-            ]
-            logger.error(f"Missing required fields: {missing_fields}")
+        if not all([object_id, selected_text, annotation_type]):
             return JsonResponse(
-                {
-                    "success": False,
-                    "error": f"Missing required fields: {', '.join(missing_fields)}",
-                },
-                status=400,
+                {"success": False, "error": "Missing core required fields"}, status=400
             )
+
+        if annotation_type == "variant":
+            # variant: need either annotation_text OR notes
+            if not annotation_text and not notes:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Variants require either variant text or notes.",
+                    },
+                    status=400,
+                )
+        else:
+            # otherwise: need annotation_text
+            if not annotation_text:
+                return JsonResponse(
+                    {"success": False, "error": "Annotation text is required."},
+                    status=400,
+                )
 
         # Get the appropriate model and object
         if model_type == "stanzatranslated":
@@ -322,6 +328,7 @@ def create_annotation(request):
         }
         # special fields for Variant type
         if annotation_type == "variant":
+            annotation_fields["notes"] = notes
             annotation_fields["editor_initials"] = request.POST.get("editor_initials", "")
             try:
                 annotation_fields["significance"] = int(request.POST.get("significance", 0))
