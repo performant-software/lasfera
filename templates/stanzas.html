@@ -131,7 +131,7 @@
                       onchange="window.location.href=`/manuscripts/${this.value}/stanzas/`"
                       class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
                       {% for manuscript in manuscripts %}
-                          {% if manuscript.iiif_url %}
+                          {% if manuscript.iiif_url or manuscript.has_variants %}
                           <option value="{{ manuscript.siglum }}"
                                   {% if manuscript.siglum == default_manuscript.siglum %}selected{% endif %}>
                           {{ manuscript.siglum }} &middot; {{manuscript.shelfmark}} | {{ manuscript.library }}
@@ -262,17 +262,19 @@
           </div>
         </div>
 
-      <!-- Tify viewer container -->
-      <div class="w-1/3 relative" 
-           x-data="tifyViewer"
-           data-has-known-folios="{{ has_known_folios|lower }}"
-           data-manifest-url="{{ manuscript.iiif_url }}">
-        <div class="sticky pt-8 top-0">
-          <div class="bg-white rounded-lg shadow-lg">
-            <div id="tify-container" class="w-full h-screen"></div>
+        <!-- Tify viewer container -->
+        {% if manuscript.iiif_url %}
+          <div class="w-1/3 relative" 
+              x-data="tifyViewer"
+              data-has-known-folios="{{ has_known_folios|lower }}"
+              data-manifest-url="{{ manuscript.iiif_url }}">
+            <div class="sticky pt-8 top-0">
+              <div class="bg-white rounded-lg shadow-lg">
+                <div id="tify-container" class="w-full h-screen"></div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        {% endif %}
       </div>
 
     <!-- Return to top button -->
