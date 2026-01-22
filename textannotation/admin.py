@@ -12,6 +12,7 @@ from textannotation.models import (
     EditorialNote,
     TextualVariant,
 )
+from textannotation.resources import TextualVariantResource
 
 
 class AnnotatedContentTypeFilter(admin.SimpleListFilter):
@@ -115,6 +116,7 @@ class TextualVariantAdminForm(forms.ModelForm, StripDivMixin):
 @admin.register(TextualVariant)
 class TextualVariantAdmin(BaseAnnotationAdminMixin, ImportExportModelAdmin):
     form = TextualVariantAdminForm
+    resource_class = TextualVariantResource
     list_display = (
         "variant_id",
         "manuscript",
