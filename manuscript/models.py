@@ -513,7 +513,7 @@ class Stanza(models.Model, AnnotatableMixin):
             )
 
     class Meta:
-        ordering = ["id"]
+        ordering = ("stanza_line_code_starts",)
 
 
 class StanzaTranslated(models.Model, AnnotatableMixin):
@@ -573,6 +573,7 @@ class StanzaTranslated(models.Model, AnnotatableMixin):
     class Meta:
         verbose_name = "Stanza translation"
         verbose_name_plural = "Stanza translations"
+        ordering = ("stanza_line_code_starts",)
 
 
 class Folio(models.Model):
