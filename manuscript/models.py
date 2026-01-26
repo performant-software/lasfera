@@ -184,6 +184,10 @@ class Library(models.Model):
         library = self.library if self.library is not None else ""
         return city + " - " + library
 
+    @property
+    def comma_formatted(self):
+        return ", ".join([part for part in [self.city, self.library] if part])
+
     def natural_key(self):
         return (self.library, self.city)
 

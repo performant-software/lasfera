@@ -134,7 +134,7 @@
                           {% if manuscript.iiif_url or manuscript.has_variants %}
                           <option value="{{ manuscript.siglum }}"
                                   {% if manuscript.siglum == default_manuscript.siglum %}selected{% endif %}>
-                          {{ manuscript.siglum }} &middot; {{manuscript.shelfmark}} | {{ manuscript.library }}
+                            {{ manuscript|format_ms }}
                           </option>
                           {% endif %}
                       {% endfor %}
