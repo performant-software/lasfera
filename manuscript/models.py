@@ -921,3 +921,22 @@ class LocationAlias(models.Model):
 
     def __str__(self) -> str:
         return f"{self.placename_from_mss} / {self.placename_standardized} / {self.placename_modern} / {self.placename_alias}"
+
+
+class ManuscriptFamily(models.Model):
+    """Model for a family to group multiple manuscripts together"""
+
+    name = models.CharField(max_length=255)
+    notes = models.TextField(blank=True)
+
+    manuscripts = models.ManyToManyField(
+        SingleManuscript, related_name="family", blank=True
+    )
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Manuscript Family"
+        verbose_name_plural = "Manuscript Families"
+        ordering = ["name"]
