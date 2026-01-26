@@ -155,6 +155,7 @@ class ManuscriptFamilyInline(admin.TabularInline):
     verbose_name = "Family"
     verbose_name_plural = "Families"
 
+
 # Custom admin models -------------------------------------
 @admin.register(SingleManuscript)
 class SingleManuscriptAdmin(ImportExportModelAdmin):
@@ -183,6 +184,10 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
     )
     search_fields = ("siglum",)
     resource_class = SingleManuscriptResource
+    list_filter = [
+        ("family", admin.RelatedOnlyFieldListFilter),
+        "library",
+    ]
 
     @admin.display(boolean=True, description="IIIF Available")
     def has_iiif_url(self, obj):
@@ -191,6 +196,9 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
     class Media:
         js = ("js/text_annotator.js",)
         css = {"all": ("css/text_annotator.css",)}
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("family")
 
 
 @admin.register(Folio)
