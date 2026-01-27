@@ -61,7 +61,11 @@ function addVariantStyles() {
             color: #333;
             line-height: 1.4;
         }
-        
+
+        .variant-popup-content dl dt::after {
+            content: ":\\00A0";
+        }
+
         .variant-popup-manuscript {
             font-style: italic;
             color: #666;
@@ -122,6 +126,21 @@ function initVariantAnnotations() {
             }
         });
     });
+
+    function formatVariant(variant) {
+        // format the variant popup content
+        return `
+        <dl>
+            <div class="flex mb-1">
+                <dt class="font-bold">Manuscript</dt>
+                <dd class="m-0">${variant.manuscript}</dd>
+            </div>
+            <div class="flex mb-1">
+                <dt class="font-bold">Variant Reading</dt>
+                <dd class="m-0">${variant.annotation}</dd>
+            </div>
+        </dl>`;
+    }
     
     // Function to show variant popup
     function showVariantPopup(event, element) {
@@ -155,7 +174,7 @@ function initVariantAnnotations() {
                 return response.json();
             })
             .then(data => {
-                const variantTextEl = data.annotation ? `<p class="mb-1"><strong>${data.line_code}</strong> ${element.textContent}] ${data.annotation} <strong>${data.manuscript}</strong></p>` : '';
+                const variantTextEl = data.annotation ? formatVariant(data) : '';
                 const additionalNotesEl = data.notes ? `<div class="variant-popup-manuscript">${data.notes}</div>` : '';
                 // Use specific template for variant display
                 popup.innerHTML = `
