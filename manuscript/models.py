@@ -184,6 +184,10 @@ class Library(models.Model):
         library = self.library if self.library is not None else ""
         return city + " - " + library
 
+    @property
+    def comma_formatted(self):
+        return ", ".join([part for part in [self.city, self.library] if part])
+
     def natural_key(self):
         return (self.library, self.city)
 
@@ -921,3 +925,22 @@ class LocationAlias(models.Model):
 
     def __str__(self) -> str:
         return f"{self.placename_from_mss} / {self.placename_standardized} / {self.placename_modern} / {self.placename_alias}"
+
+
+class ManuscriptFamily(models.Model):
+    """Model for a family to group multiple manuscripts together"""
+
+    name = models.CharField(max_length=255)
+    notes = models.TextField(blank=True)
+
+    manuscripts = models.ManyToManyField(
+        SingleManuscript, related_name="family", blank=True
+    )
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Manuscript Family"
+        verbose_name_plural = "Manuscript Families"
+        ordering = ["name"]

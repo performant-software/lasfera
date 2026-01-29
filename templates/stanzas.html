@@ -77,9 +77,9 @@
 
 {% block content %}
   <div class="mx-auto">
-    <section class="w-full p-4 my-10">
+    <section class="w-full p-4 mt-7 mb-10">
     <!-- Title and Hamburger Menu -->
-      <div class="flex justify-between items-center pb-8">
+      <div class="sticky top-0 bg-white z-10 flex justify-between items-center mb-5 shadow-md shadow-white py-3">
         <h3 class="text-4xl font-bold" id="top">
           "The Globe" (<em>La sfera</em>) by Gregorio Dati
         </h3>
@@ -134,7 +134,7 @@
                           {% if manuscript.iiif_url or manuscript.has_variants %}
                           <option value="{{ manuscript.siglum }}"
                                   {% if manuscript.siglum == default_manuscript.siglum %}selected{% endif %}>
-                          {{ manuscript.siglum }} &middot; {{manuscript.shelfmark}} | {{ manuscript.library }}
+                            {{ manuscript|format_ms }}
                           </option>
                           {% endif %}
                       {% endfor %}
@@ -268,9 +268,9 @@
               x-data="tifyViewer"
               data-has-known-folios="{{ has_known_folios|lower }}"
               data-manifest-url="{{ manuscript.iiif_url }}">
-            <div class="sticky pt-8 top-0">
+            <div class="sticky pt-8 top-11">
               <div class="bg-white rounded-lg shadow-lg">
-                <div id="tify-container" class="w-full h-screen"></div>
+                <div id="tify-container" class="w-full h-[calc(100vh-4.5rem)]"></div>
               </div>
             </div>
           </div>

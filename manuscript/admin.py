@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
+from django.db.models import Count
 from django.urls import reverse
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
@@ -16,6 +17,7 @@ from manuscript.models import (
     LineCode,
     Location,
     LocationAlias,
+    ManuscriptFamily,
     Reference,
     SingleManuscript,
     Stanza,
@@ -39,7 +41,13 @@ from textannotation.admin import (
 from textannotation.models import CrossReference, EditorialNote, TextualVariant
 
 
-# Inline models --------------------------------------------
+# Admin site configuration --------------------------------
+admin.site.site_header = "La Sfera Admin"
+admin.site.site_title = "La Sfera Admin Portal"
+admin.site.index_title = "Welcome to the La Sfera Manuscript Portal"
+
+
+# Inline models -------------------------------------------
 class StanzaInline(admin.StackedInline):
     model = Stanza
     extra = 1
@@ -140,7 +148,67 @@ class TextualVariantInline(GenericTabularInline):
     form = TextualVariantAdminForm
 
 
-# Custom admin models --------------------------------------------
+class ManuscriptTextualVariantsInline(admin.TabularInline):
+    """Inline to display all textual variants read-only on manuscript"""
+
+    model = TextualVariant
+    extra = 0
+    classes = ("collapse",)
+
+    fields = (
+        "line_code_display",
+        "selected_text",
+        "variant_text_display",
+        "significance",
+        "notes",
+        "variant_id",
+        "editor_initials",
+    )
+
+    # all fields read-only
+    def get_readonly_fields(self, request, obj=None):
+        return [f.name for f in self.model._meta.fields] + [
+            "line_code_display",
+            "variant_text_display",
+        ]
+
+    # prevents adding or deleting from within the Manuscript page
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Line code")
+    def line_code_display(self, obj):
+        """show line code and lnk to the Stanza or StanzaTranslated"""
+        target = obj.content_object
+        if target and hasattr(target, "stanza_line_code_starts"):
+            app_label = target._meta.app_label
+            model_name = target._meta.model_name
+            url = reverse(f"admin:{app_label}_{model_name}_change", args=[target.id])
+            return format_html(
+                '<a href="{}">{}</a>', url, target.stanza_line_code_starts
+            )
+        return "N/A"
+
+    @admin.display(description="Variant text")
+    def variant_text_display(self, obj):
+        admin_url = reverse("admin:textannotation_textualvariant_change", args=[obj.id])
+        return format_html(f'<a href="{admin_url}">{obj.annotation}</a>')
+
+
+class ManuscriptFamilyInline(admin.TabularInline):
+    model = ManuscriptFamily.manuscripts.through
+    classes = ("collapse",)
+    autocomplete_fields = ["manuscriptfamily"]
+    extra = 1
+    verbose_name = "Family"
+    verbose_name_plural = "Families"
+
+
+# Custom admin models -------------------------------------
+@admin.register(SingleManuscript)
 class SingleManuscriptAdmin(ImportExportModelAdmin):
     inlines = [
         AuthorityFileInline,
@@ -151,9 +219,8 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
         ViewerNotesInline,
         EditorialStatusInline,
         FolioInline,
-        EditorialNoteInline,
-        CrossReferenceInline,
-        TextualVariantInline,
+        ManuscriptFamilyInline,
+        ManuscriptTextualVariantsInline,
     ]
     list_display = (
         "siglum",
@@ -166,16 +233,24 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
     )
     search_fields = ("siglum",)
     resource_class = SingleManuscriptResource
+    list_filter = [
+        ("family", admin.RelatedOnlyFieldListFilter),
+        "library",
+    ]
 
     @admin.display(boolean=True, description="IIIF Available")
     def has_iiif_url(self, obj):
         return bool(obj.iiif_url)
 
     class Media:
-        js = ("js/text_annotator.js",)
+        js = ("js/text_annotations.js",)
         css = {"all": ("css/text_annotator.css",)}
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("family")
 
+
+@admin.register(Folio)
 class FolioAdmin(ImportExportModelAdmin):
     resource_class = FolioResource
 
@@ -266,6 +341,7 @@ class ReferenceAdmin(ImportExportModelAdmin):
     resource_class = ReferenceResource
 
 
+@admin.register(Library)
 class LibraryAdmin(admin.ModelAdmin):
     list_display = ("library", "city", "id")
     list_filter = ("city",)
@@ -368,6 +444,7 @@ class StanzaAdminForm(forms.ModelForm, StripDivMixin):
         return self.strip_outer_div("stanza_text")
 
 
+@admin.register(Stanza)
 class StanzaAdmin(admin.ModelAdmin):
     form = StanzaAdminForm
     inlines = [
@@ -413,6 +490,7 @@ class StanzaTranslatedAdminForm(forms.ModelForm, StripDivMixin):
         return self.strip_outer_div("stanza_text")
 
 
+@admin.register(StanzaTranslated)
 class StanzaTranslatedAdmin(admin.ModelAdmin):
     form = StanzaTranslatedAdminForm
     list_display = ("stanza_line_code_starts", "stanza_text", "language")
@@ -431,6 +509,7 @@ class StanzaTranslatedAdmin(admin.ModelAdmin):
         js = ("js/text_annotations.js",)
 
 
+@admin.register(LineCode)
 class LineCodeAdmin(ImportExportModelAdmin):
     resource_class = LineCodeResource
     list_display = ("code", "get_toponyms", "get_folio")
@@ -452,14 +531,29 @@ class LineCodeAdmin(ImportExportModelAdmin):
     get_folio.short_description = "Associated Folio"
 
 
-admin.site.register(LineCode, LineCodeAdmin)
+@admin.register(ManuscriptFamily)
+class ManuscriptFamilyAdmin(admin.ModelAdmin):
+    list_display = ["name", "get_manuscript_count", "get_manuscripts"]
+    autocomplete_fields = ["manuscripts"]
+    search_fields = ["name"]
 
-admin.site.register(Library, LibraryAdmin)
-admin.site.register(Folio, FolioAdmin)
-admin.site.register(SingleManuscript, SingleManuscriptAdmin)
-admin.site.register(Stanza, StanzaAdmin)
-admin.site.register(StanzaTranslated, StanzaTranslatedAdmin)
+    def get_manuscript_count(self, obj):
+        return obj.total_manuscripts
 
-admin.site.site_header = "La Sfera Admin"
-admin.site.site_title = "La Sfera Admin Portal"
-admin.site.index_title = "Welcome to the La Sfera Manuscript Portal"
+    get_manuscript_count.short_description = "Count"
+
+    def get_manuscripts(self, obj):
+        """Display associated manuscripts' sigla"""
+        manuscripts = obj.manuscripts.all().order_by("siglum")
+        return ", ".join([m.siglum for m in manuscripts])
+
+    get_manuscripts.short_description = "Associated Manuscripts"
+
+    def get_queryset(self, request):
+        """Override for list view optimizations"""
+        qs = super().get_queryset(request)
+        # Prefetch for get_manuscripts
+        return qs.prefetch_related("manuscripts").annotate(
+            # Annotate for get_manuscript_count
+            total_manuscripts=Count("manuscripts")
+        )
