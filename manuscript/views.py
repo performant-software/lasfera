@@ -61,36 +61,24 @@ def manuscript_stanzas(request, siglum):
     folios = manuscript.folio_set.all().order_by("folio_number")
     logger.info(f"Found {folios.count()} folios for manuscript {siglum}")
 
-    # Check if this is Urb1
-    is_urb1 = siglum == "Urb1"
-
-    # Special handling for the Urb1 manuscript which we know works
-    if is_urb1:
-        # For Urb1, use the well-tested filtering approach
+    if folios.exists():
+        # If we have folios, try to use them to find matching stanzas
+        logger.info(f"Using folios to find stanzas for {siglum}")
         stanzas = Stanza.objects.filter(
             folios__in=folios, folios__manuscript=manuscript
         ).distinct()
-        logger.info(f"Found {stanzas.count()} stanzas for Urb1 using direct filtering")
-    else:
-        # For all other manuscripts
-        if folios.exists():
-            # If we have folios, try to use them to find matching stanzas
-            logger.info(f"Using folios to find stanzas for {siglum}")
-            stanzas = Stanza.objects.filter(
-                folios__in=folios, folios__manuscript=manuscript
-            ).distinct()
 
-            if stanzas.count() == 0:
-                logger.info(
-                    f"No stanzas found using folios for {siglum}, using all stanzas with line codes"
-                )
-                stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
-        else:
-            # No folios, so just use all stanzas with line codes
+        if stanzas.count() == 0:
             logger.info(
-                f"No folios found for {siglum}, using all stanzas with line codes"
+                f"No stanzas found using folios for {siglum}, using all stanzas with line codes"
             )
             stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
+    else:
+        # No folios, so just use all stanzas with line codes
+        logger.info(
+            f"No folios found for {siglum}, using all stanzas with line codes"
+        )
+        stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
 
     # Prefetch for efficiency
     stanzas = stanzas.prefetch_related(
