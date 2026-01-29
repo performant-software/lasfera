@@ -150,9 +150,6 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
         ViewerNotesInline,
         EditorialStatusInline,
         FolioInline,
-        EditorialNoteInline,
-        CrossReferenceInline,
-        TextualVariantInline,
     ]
     list_display = (
         "siglum",
