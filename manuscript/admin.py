@@ -295,6 +295,7 @@ class FolioAdmin(ImportExportModelAdmin):
         return f"{obj.line_code_range_start} → {end}"
 
     line_range_display.short_description = "Line Range"
+    line_range_display.admin_order_field = "line_code_range_start"
 
     def stanza_list(self, obj):
         stanzas = obj.stanzas.order_by("stanza_line_code_starts")
@@ -311,9 +312,12 @@ class FolioAdmin(ImportExportModelAdmin):
                 if len(stanza.stanza_text) > 100
                 else stanza.stanza_text
             )
+            admin_link = reverse("admin:manuscript_stanza_change", args=(stanza.pk,))
             html.append(
                 f"<tr>"
-                f'<td style="padding: 5px; border-bottom: 1px solid #eee;">{stanza.stanza_line_code_starts}</td>'
+                f"""<td style="padding: 5px; border-bottom: 1px solid #eee;">
+                    <a href="{admin_link}">{stanza.stanza_line_code_starts}</a>
+                </td>"""
                 f'<td style="padding: 5px; border-bottom: 1px solid #eee;">{preview}</td>'
                 f"</tr>"
             )
@@ -459,6 +463,7 @@ class StanzaAdmin(admin.ModelAdmin):
     )
     list_filter = ("language",)
     actions = [set_language_to_italian, set_language_to_english]
+    autocomplete_fields = ("folios",)
 
     class Media:
         css = {
