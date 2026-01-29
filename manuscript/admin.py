@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
+from django.urls import reverse
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
@@ -139,6 +140,56 @@ class TextualVariantInline(GenericTabularInline):
     form = TextualVariantAdminForm
 
 
+class ManuscriptTextualVariantsInline(admin.TabularInline):
+    """Inline to display all textual variants read-only on manuscript"""
+
+    model = TextualVariant
+    extra = 0
+    classes = ("collapse",)
+
+    fields = (
+        "line_code_display",
+        "selected_text",
+        "variant_text_display",
+        "significance",
+        "notes",
+        "variant_id",
+        "editor_initials",
+    )
+
+    # all fields read-only
+    def get_readonly_fields(self, request, obj=None):
+        return [f.name for f in self.model._meta.fields] + [
+            "line_code_display",
+            "variant_text_display",
+        ]
+
+    # prevents adding or deleting from within the Manuscript page
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Line code")
+    def line_code_display(self, obj):
+        """show line code and lnk to the Stanza or StanzaTranslated"""
+        target = obj.content_object
+        if target and hasattr(target, "stanza_line_code_starts"):
+            app_label = target._meta.app_label
+            model_name = target._meta.model_name
+            url = reverse(f"admin:{app_label}_{model_name}_change", args=[target.id])
+            return format_html(
+                '<a href="{}">{}</a>', url, target.stanza_line_code_starts
+            )
+        return "N/A"
+
+    @admin.display(description="Variant text")
+    def variant_text_display(self, obj):
+        admin_url = reverse("admin:textannotation_textualvariant_change", args=[obj.id])
+        return format_html(f'<a href="{admin_url}">{obj.annotation}</a>')
+
+
 # Custom admin models --------------------------------------------
 class SingleManuscriptAdmin(ImportExportModelAdmin):
     inlines = [
@@ -150,6 +201,7 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
         ViewerNotesInline,
         EditorialStatusInline,
         FolioInline,
+        ManuscriptTextualVariantsInline,
     ]
     list_display = (
         "siglum",
