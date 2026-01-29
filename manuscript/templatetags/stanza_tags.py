@@ -27,8 +27,12 @@ def annotate_text(html_content, annotations):
 
     # Sort annotations by start position
     sorted_annotations = sorted(
-        annotations, 
-        key=lambda x: x.from_pos.get('offset', 0) if isinstance(x.from_pos, dict) else (x.from_pos or 0)
+        annotations,
+        key=lambda x: (
+            x.from_pos.get("offset", 0)
+            if isinstance(x.from_pos, dict)
+            else (x.from_pos or 0)
+        ),
     )
 
     result = []
@@ -71,3 +75,10 @@ def annotate_text(html_content, annotations):
         result.append(inner_html[last_pos:])
 
     return mark_safe("".join(result))
+
+
+@register.filter
+def format_ms(manuscript):
+    """Format manuscripts for dropdowns as:
+    Siglum (City, HoldingInstitution, Shelfmark)"""
+    return f"{manuscript.siglum} ({manuscript.library.comma_formatted}, {manuscript.shelfmark})"
