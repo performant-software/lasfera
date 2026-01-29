@@ -171,7 +171,7 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
         return bool(obj.iiif_url)
 
     class Media:
-        js = ("js/text_annotator.js",)
+        js = ("js/text_annotations.js",)
         css = {"all": ("css/text_annotator.css",)}
 
 
