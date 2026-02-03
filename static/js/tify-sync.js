@@ -4,14 +4,26 @@ const TifySync = {
   manifestUrl: null,
   observer: null,
   currentFolio: null,
+  manifestData: null,
+  viewerReady: false,
 
-  initialize(containerId, manifestUrl) {
+  async initialize(containerId, manifestUrl) {
     console.log('Initializing TifySync with:', { containerId, manifestUrl });
     this.manifestUrl = manifestUrl;
     
     if (!manifestUrl) {
       console.log('No manifest URL provided, skipping initialization');
       return;
+    }
+
+    if (!this.manifestData) {
+      // Fetch the manifest JSON
+      try {
+        const response = await fetch(this.manifestUrl);
+        this.manifestData = await response.json();
+      } catch (error) {
+        console.error('Error fetching manifest:', error);
+      }
     }
     
     // Initialize Tify viewer
@@ -23,11 +35,19 @@ const TifySync = {
       optionsResetOnPageChange: ['pan'],
       urlQueryKey: null, // Disable URL parameter changes to avoid conflicts
     });
+
+    this.viewer.ready.then(() => {
+      console.log('Tify ready to change pages');
+      this.viewerReady = true;
+    });
     
     console.log('Tify viewer initialized');
     
     // Set up event listeners
     this.setupEventListeners();
+
+    // resolve
+    return true;
   },
   
   setupEventListeners() {
@@ -47,7 +67,13 @@ const TifySync = {
     }, 1000);
   },
   
-  navigateToFolio(folioNumber) {
+  navigateToFolio(folioNumber, retryCount = 0) {
+    if (!this.viewerReady && retryCount < 5) {
+      console.log(`Viewer not ready for ${folioNumber}, retrying... (${retryCount + 1})`);
+      setTimeout(() => this.navigateToFolio(folioNumber, retryCount + 1), 1000);
+      return;
+    }
+
     if (!this.viewer || !this.manifestUrl || !folioNumber) {
       console.log('Cannot navigate: missing required data', {
         hasViewer: !!this.viewer,
@@ -70,10 +96,12 @@ const TifySync = {
   
   async fetchManifestAndNavigate(folioNumber) {
     try {
-      // Fetch the manifest JSON
-      const response = await fetch(this.manifestUrl);
-      const manifest = await response.json();
-      
+      if (!this.manifestData) {
+        const response = await fetch(this.manifestUrl);
+        this.manifestData = await response.json();
+      }
+      const manifest = this.manifestData;
+
       // Extract the canvases
       const canvases = manifest.sequences[0].canvases;
       console.log('Found manifest with', canvases.length, 'canvases');
@@ -193,7 +221,7 @@ document.addEventListener('alpine:init', () => {
     currentFolio: null,
     viewerInitialized: false,
 
-    init() {
+    async init() {
       console.log('Initializing Alpine tifyViewer component');
       this.hasKnownFolios = this.$el.dataset.hasKnownFolios === 'true';
       this.manifestUrl = this.$el.dataset.manifestUrl;
@@ -204,21 +232,49 @@ document.addEventListener('alpine:init', () => {
       });
       
       if (this.manifestUrl) {
-        this.$nextTick(() => {
-          TifySync.initialize('tify-container', this.manifestUrl);
-          this.viewerInitialized = true;
-          console.log('Tify viewer initialized');
-          
-          // Set up the observer after Alpine and Tify are initialized
-          TifySync.setupIntersectionObserver((folioNumber) => {
-            this.handleFolioChange(folioNumber);
-          });
+        await TifySync.initialize('tify-container', this.manifestUrl);
+        this.viewerInitialized = true;
+        console.log('Tify viewer initialized');
+        
+        // Set up the observer after Alpine and Tify are initialized
+        TifySync.setupIntersectionObserver((folioNumber) => {
+          this.handleFolioChange(folioNumber);
+        });
+
+        TifySync.viewer.ready.then(() => {
+          console.log('Tify is ready. Finding current folio...');
+          const dividers = Array.from(
+            document.querySelectorAll('.folio-divider'),
+          );
+          let activeFolio = null;
+          // get the last divider that is ABOVE the top 15% of screen
+          const readingLine = window.innerHeight * 0.15;
+          for (let i = 0; i < dividers.length; i++) {
+            const rect = dividers[i].getBoundingClientRect();
+            if (rect.top <= readingLine) {
+              activeFolio = dividers[i].dataset.folioNumber;
+            } else {
+              break;
+            }
+          }
+          if (activeFolio) {
+            console.log('Initial jump to folio:', activeFolio);
+            this.handleFolioChange(activeFolio, true);
+          } else {
+            console.log(
+              'No folio divider found above the current scroll position.',
+            );
+          }
         });
       }
     },
 
-    handleFolioChange(folioNumber) {
+    handleFolioChange(folioNumber, force = false) {
+      if (!force && this.currentFolio === folioNumber) {
+        return;
+      }
       console.log('Handling folio change:', folioNumber);
+      this.currentFolio = folioNumber;
       if (this.viewerInitialized) {
         TifySync.navigateToFolio(folioNumber);
       } else {
