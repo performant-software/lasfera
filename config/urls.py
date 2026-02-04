@@ -19,8 +19,11 @@ urlpatterns = [
     path("prose/", include("prose.urls")),
     path("gallery/", include("gallery.urls", namespace="gallery")),
     path("cms/", include(wagtailadmin_urls)),
-    path("", include(wagtail_urls)),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+]
 
 if settings.DEBUG:
     urlpatterns += [path("__reload__/", include("django_browser_reload.urls"))]
+
+urlpatterns += [
+    path("", include(wagtail_urls)),
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
