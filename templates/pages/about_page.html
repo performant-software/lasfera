@@ -7,18 +7,18 @@
     <div class="mx-auto container pt-3">
         <section class="w-full p-4 my-10">
             <h3 class="text-4xl pb-4 font-bold" id="top">
-                {{ about_page.title }}
+                {{ page.title }}
             </h3>
 
             <div class="grid grid-cols-3 gap-4">
           {# Left Column (2/3) #}
                 <section id="page" class="prose col-span-2">
-                    {{ about_page.body|richtext }}
+                    {{ page.body|richtext }}
                 </section>
 
           {# Right Column (1/3) #}
                 <aside class="prose border-l border-gray-200 pl-5">
-                    {{ about_page.team|richtext }}
+                    {{ page.team|richtext }}
                 </aside>
             </div>
         </section>

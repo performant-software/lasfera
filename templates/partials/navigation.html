@@ -13,9 +13,9 @@
             
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center space-x-4">
-                <a href="/manuscripts/Urb1/stanzas/" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Edition</a>
+                <a href="{% url 'manuscript_stanzas' siglum='Urb1' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Edition</a>
                 <a href="{% url 'toponyms' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gazetteer</a>
-                <a href="/pages/gallery/" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gallery</a>
+                <a href="{% slugurl 'gallery' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gallery</a>
                 
                 <!-- Resources Dropdown -->
                 <div class="relative" x-data="{ open: false }" @click.away="open = false">
@@ -39,14 +39,14 @@
                         class="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50"
                     >
                         <div class="py-1">
-                            <a href="/resources/education/" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">La Sfera in the Classroom</a>
-                            <a href="/resources/data/" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Data</a>
-                            <a href="/pages/talks-presentations/" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Talks & Presentations</a>
+                            <a href="{% slugurl 'education' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">La Sfera in the Classroom</a>
+                            <a href="{% slugurl 'data' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Data</a>
+                            <a href="{% slugurl 'talks-presentations' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Talks & Presentations</a>
                         </div>
                     </div>
                 </div>
 
-                <a href="/about/" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
+                <a href="{% slugurl 'about' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
                 <a href="{% slugurl 'introduction' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Introduction</a>
             </div>
 
@@ -74,9 +74,9 @@
         x-transition:leave-end="opacity-0 scale-95"
         class="md:hidden">
         <div class="px-2 pt-2 pb-3 space-y-1">
-            <a href="/manuscripts/Urb1/stanzas/" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Edition</a>
+            <a href="{% url 'manuscript_stanzas' siglum='Urb1' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Edition</a>
             <a href="{% url 'toponyms' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gazetteer</a>
-            <a href="/pages/gallery/" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gallery</a>
+            <a href="{% slugurl 'gallery' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gallery</a>
             
             <!-- Mobile Resources Dropdown -->
             <div class="relative">
@@ -99,13 +99,13 @@
                     x-transition:leave-end="opacity-0"
                     class="pl-4"
                 >
-                    <a href="/resources/education/" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">La Sfera in the Classroom</a>
-                    <a href="/resources/data/" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">Data</a>
-                    <a href="/pages/talks-presentations/" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">Talks & Presentations</a>
+                    <a href="{% slugurl 'education' %}" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">La Sfera in the Classroom</a>
+                    <a href="{% slugurl 'data' %}" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">Data</a>
+                    <a href="{% slugurl 'talks-presentations' %}" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">Talks & Presentations</a>
                 </div>
             </div>
 
-            <a href="/about/" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
+            <a href="{% slugurl 'about' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
         </div>
     </div>
 </nav>

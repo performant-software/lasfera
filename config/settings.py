@@ -228,7 +228,7 @@ if IS_HEROKU_APP:
     AWS_SECRET_ACCESS_KEY = env.str("AWS_SECRET_ACCESS_KEY")
     AWS_STORAGE_BUCKET_NAME = env.str("AWS_STORAGE_BUCKET_NAME")
     AWS_S3_REGION_NAME = env.str("AWS_S3_REGION_NAME", default="us-east-1")
-    AWS_QUERYSTRING_AUTH = False 
+    AWS_QUERYSTRING_AUTH = False
     AWS_S3_FILE_OVERWRITE = False
     STORAGES = {
         "default": {
@@ -262,7 +262,7 @@ MANAGERS = ADMINS
 
 # Wagtail settings
 WAGTAIL_SITE_NAME = "La Sfera"
-WAGTAILADMIN_BASE_URL = "https://dev.lasfera.rrchnm.org"
+WAGTAILADMIN_BASE_URL = env("WAGTAILADMIN_BASE_URL", default="http://localhost:8000")
 WAGTAILDOCS_EXTENSIONS = [
     "csv",
     "docx",
