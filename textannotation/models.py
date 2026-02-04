@@ -1,3 +1,4 @@
+import re
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -61,6 +62,35 @@ class BaseAnnotation(models.Model):
         if isinstance(self, TextualVariant):
             return "variant"
         return "unknown"
+
+    def sanitize_json_field(self, json_data):
+        # helper method to force numeric values in the JSON fields
+        if isinstance(json_data, dict):
+            # if it's a dict, look for "offset"
+            if "offset" in json_data and json_data["offset"] is not None:
+                try:
+                    json_data["offset"] = int(json_data["offset"])
+                except (ValueError, TypeError):
+                    pass
+        elif isinstance(json_data, str):
+            # If the field is just a string "123", try converting it
+            try:
+                return int(json_data)
+            except ValueError:
+                pass
+        return json_data
+
+    def save(self, *args, **kwargs):
+        # sanitize from_pos, to_pos
+        self.from_pos = self.sanitize_json_field(self.from_pos)
+        self.to_pos = self.sanitize_json_field(self.to_pos)
+
+        # remove extra empty lines added in prosemirror
+        if self.annotation:
+            pattern = r"(<br\s*/?>|<div><br\s*/?></div>)+$"
+            self.annotation = re.sub(pattern, "", self.annotation.strip()).strip()
+
+        super().save(*args, **kwargs)
 
 
 class EditorialNote(BaseAnnotation):

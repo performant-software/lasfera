@@ -386,7 +386,18 @@ class AnnotatableMixin:
         )
 
 
-class Stanza(models.Model, AnnotatableMixin):
+class RichTextMixin:
+    """mixin for a save method to sanitize rich text fields for frontend display"""
+
+    def save(self, *args, **kwargs):
+        # remove extra empty lines added in prosemirror
+        if self.stanza_text:
+            pattern = r"(<br\s*/?>|<div><br\s*/?></div>)+$"
+            self.stanza_text = re.sub(pattern, "", self.stanza_text.strip()).strip()
+        super().save(*args, **kwargs)
+
+
+class Stanza(models.Model, AnnotatableMixin, RichTextMixin):
     """A stanza from the manuscript."""
 
     STANZA_LANGUAGE = (
@@ -520,7 +531,7 @@ class Stanza(models.Model, AnnotatableMixin):
         ordering = ("stanza_line_code_starts",)
 
 
-class StanzaTranslated(models.Model, AnnotatableMixin):
+class StanzaTranslated(models.Model, AnnotatableMixin, RichTextMixin):
     """This model holds the English version of the stanzas."""
 
     id = models.AutoField(primary_key=True)
