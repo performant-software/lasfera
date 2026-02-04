@@ -5,6 +5,7 @@ import random
 from collections import defaultdict
 from html import unescape
 
+from django.urls import reverse
 import requests
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.staticfiles import finders
@@ -19,6 +20,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import DetailView
 from rest_framework import viewsets
 
+from gallery.models import GalleryIndexPage
 from manuscript.models import (
     Folio,
     Location,
@@ -453,88 +455,43 @@ def index(request: HttpRequest):
     # Shuffle the image URLs to simulate randomness
     random.shuffle(image_urls)
 
+    # get wagtail urls programmatically
+    about_page = AboutPage.objects.live().first()
+    resources_page = SitePage.objects.live().filter(slug="resources").first()
+    gallery_index_page = GalleryIndexPage.objects.live().first()
+
     context = {
         "manuscript_images": image_urls,
         "intro": intro,  # via Wagtail
         "nav_items": [
             {
                 "name": "Edition",
-                "url": "/manuscripts/Urb1/stanzas/",
+                "url": reverse("manuscript_stanzas", kwargs={"siglum": "Urb1"}),
                 "thumbnail": static("images/home/wellcome230_p44.webp"),
             },
             {
                 "name": "Gazetteer",
-                "url": "/toponyms",
+                "url": reverse("toponyms"),
                 "thumbnail": static("images/home/bncf_csopp2618_m1b.webp"),
             },
             {
                 "name": "Resources",
-                "url": "#",
+                "url": resources_page.url if resources_page else "#",
                 "thumbnail": static("images/home/basel_cl194_p59.webp"),
             },
             {
                 "name": "Gallery",
-                "url": "/pages/gallery/",
+                "url": gallery_index_page.url if gallery_index_page else "#",
                 "thumbnail": static("images/home/nypl_f1v_ship.webp"),
             },
             {
                 "name": "About",
-                "url": "/about/",
+                "url": about_page.url if about_page else "#",
                 "thumbnail": static("images/home/oxford74_jerusalem.webp"),
             },
         ],
     }
     return render(request, "index.html", context)
-
-
-def about(request):
-    about_page = AboutPage.objects.live().first()
-
-    return render(
-        request,
-        "pages/about_page.html",
-        {
-            "about_page": about_page,
-        },
-    )
-
-
-def education(request):
-    education_page = (
-        SitePage.objects.live().filter(title="La Sfera in the Classroom").first()
-    )
-
-    return render(
-        request,
-        "pages/site_page.html",
-        {
-            "page": education_page,
-        },
-    )
-
-
-def data(request):
-    data_page = SitePage.objects.live().filter(title="Data").first()
-
-    return render(
-        request,
-        "pages/site_page.html",
-        {
-            "page": data_page,
-        },
-    )
-
-
-def talks(request):
-    talks_page = SitePage.objects.live().filter(title="Talks and Presentations").first()
-
-    return render(
-        request,
-        "pages/site_page.html",
-        {
-            "page": talks_page,
-        },
-    )
 
 
 def mirador_view(request, manuscript_id, page_number):

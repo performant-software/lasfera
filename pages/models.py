@@ -14,6 +14,7 @@ class AboutPage(RoutablePageMixin, Page):
         FieldPanel("body", classname="full"),
         FieldPanel("team", classname="full"),
     ]
+    template = "pages/about_page.html"
 
 
 class SitePage(Page):
