@@ -2,7 +2,30 @@
 document.addEventListener("DOMContentLoaded", function() {
     // First add the styles to document head in admin view
     addStyles();
-    
+
+    // prepare to warn user if they try to change stanza_text
+    const stanzaTextInput = document.querySelector('#id_stanza_text');
+    if (stanzaTextInput) {
+        // Store the original value to compare later
+        const originalText = stanzaTextInput.value;
+        const form = document.querySelector('#stanza_form, #stanzatranslated_form');
+        form.addEventListener('submit', function (e) {
+            // If text has changed and there are inlines present
+            const hasInlines =
+                document.querySelectorAll('.inline-related .form-row:not(.empty-form)').length >
+                0;
+            if (stanzaTextInput.value !== originalText && hasInlines) {
+                const msg =
+                'Warning: You have modified the Stanza Text. ' +
+                'This may cause existing annotations to become unlinked or shift position. ' +
+                '\n\nAre you sure you want to proceed?';
+                if (!confirm(msg)) {
+                    e.preventDefault(); // Stop the save
+                }
+            }
+        });
+    }
+
     // Initialize the annotation system only after Trix is ready
     if (typeof Trix !== 'undefined') {
         initializeAnnotationSystem();

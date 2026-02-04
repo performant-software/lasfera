@@ -116,26 +116,57 @@ class AuthorityFileInline(admin.TabularInline):
     extra = 1
 
 
-class EditorialNoteInline(GenericTabularInline):
+class BaseAnnotationInline(GenericTabularInline):
+    """Inline mixin"""
+
+    readonly_fields = ("selected_text", "link_status")
+
+    @admin.display(description="Link Status")
+    def link_status(self, obj):
+        if not obj.id or not obj.content_object:
+            return "—"
+
+        parent_text = obj.content_object.stanza_text
+        # get offset
+        offset = (
+            obj.from_pos.get("offset", 0)
+            if isinstance(obj.from_pos, dict)
+            else (obj.from_pos or 0)
+        )
+
+        # selected_text is present and in the right place
+        if parent_text[offset : offset + len(obj.selected_text)] == obj.selected_text:
+            return "✔"
+
+        # text has shifted, annotation may be broken
+        elif obj.selected_text in parent_text:
+            return format_html('<span style="color: orange;">⚠ Possibly broken</span>')
+
+        # broken: cannot associate text
+        return format_html(
+            '<span style="color: red; font-weight: bold;">✖ Broken</span>'
+        )
+
+
+class EditorialNoteInline(BaseAnnotationInline):
     model = EditorialNote
     extra = 0
-    fields = ("selected_text", "annotation")
-    readonly_fields = ("selected_text",)
+    fields = ("link_status", "selected_text", "annotation")
     form = EditorialNoteAdminForm
 
 
-class CrossReferenceInline(GenericTabularInline):
+class CrossReferenceInline(BaseAnnotationInline):
     model = CrossReference
     extra = 0
-    fields = ("selected_text", "annotation")
-    readonly_fields = ("selected_text",)
+    fields = ("link_status", "selected_text", "annotation")
     form = CrossReferenceAdminForm
 
 
-class TextualVariantInline(GenericTabularInline):
+class TextualVariantInline(BaseAnnotationInline):
     model = TextualVariant
     extra = 0
     fields = (
+        "link_status",
         "selected_text",
         "annotation",
         "manuscript",
@@ -144,7 +175,6 @@ class TextualVariantInline(GenericTabularInline):
         "variant_id",
         "editor_initials",
     )
-    readonly_fields = ("selected_text",)
     form = TextualVariantAdminForm
 
 
