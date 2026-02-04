@@ -190,7 +190,7 @@
                             {% for manuscript in manuscripts %}
                                 <option value="{{ manuscript.siglum }}"
                                         {% if manuscript.siglum == default_manuscript.siglum %}selected{% endif %}>
-                                {{ manuscript.siglum }} &middot; {{manuscript.shelfmark}} | {{ manuscript.library }}
+                                    {{ manuscript|format_ms }}
                                 </option>
                             {% endfor %}
                         </select>
@@ -267,7 +267,7 @@
                                                         </a>
                                                     </span>
                                                     <span class="flex-1 pl-4">
-                                                        {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations.all|safe }}
+                                                        {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
                                                     </span>
                                                 </div>
                                             </div>
@@ -304,7 +304,7 @@
                             {% for book_number, stanza_pairs in stanza_pairs.items %}
                                 {% for stanza_pair in stanza_pairs %}
                                     {% for stanza in stanza_pair.original %}
-                                        {% for annotation in stanza.annotations.all %}
+                                        {% for annotation in stanza.annotations %}
                                             {% if annotation.annotation_type == 'variant' %}
                                             <div class="variant-entry" data-annotation-id="{{ annotation.id }}">
                                               <div class="flex items-center mb-2">
@@ -332,6 +332,7 @@
 
 {% block scripts %}
     <script src="{% static 'js/annotations.js' %}"></script>
+    <script src="{% static 'js/variant_annotations.js' %}"></script>
     <script src="{% static 'js/stanza.js' %}"></script>
     <script>
         // Manuscript-specific JavaScript for handling variants

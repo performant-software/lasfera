@@ -61,7 +61,11 @@ function addVariantStyles() {
             color: #333;
             line-height: 1.4;
         }
-        
+
+        .variant-popup-content dl dt::after {
+            content: ":\\00A0";
+        }
+
         .variant-popup-manuscript {
             font-style: italic;
             color: #666;
@@ -105,8 +109,8 @@ function initVariantAnnotations() {
         // Highlight corresponding sidebar entry on hover
         variant.addEventListener('mouseenter', function() {
             const annotationId = this.dataset.annotationId;
-            const sidebarEntry = document.querySelector(`.variant-entry[data-annotation-id="${annotationId}"]`);
-            if (sidebarEntry) {
+            const annotationType = this.dataset.annotationType;
+            const sidebarEntry = document.querySelector(`.variant-entry[data-annotation-id="${annotationId}"][data-annotation-type="${annotationType}"]`);            if (sidebarEntry) {
                 sidebarEntry.style.backgroundColor = '#FFCC80';
                 sidebarEntry.style.transform = 'translateX(3px)';
             }
@@ -114,13 +118,29 @@ function initVariantAnnotations() {
         
         variant.addEventListener('mouseleave', function() {
             const annotationId = this.dataset.annotationId;
-            const sidebarEntry = document.querySelector(`.variant-entry[data-annotation-id="${annotationId}"]`);
+            const annotationType = this.dataset.annotationType;
+            const sidebarEntry = document.querySelector(`.variant-entry[data-annotation-id="${annotationId}"][data-annotation-type="${annotationType}"]`);
             if (sidebarEntry) {
                 sidebarEntry.style.backgroundColor = '#FFF8E1';
                 sidebarEntry.style.transform = 'translateX(0)';
             }
         });
     });
+
+    function formatVariant(variant) {
+        // format the variant popup content
+        return `
+        <dl>
+            <div class="flex mb-1">
+                <dt class="font-bold">Manuscript</dt>
+                <dd class="m-0">${variant.manuscript}</dd>
+            </div>
+            <div class="flex mb-1">
+                <dt class="font-bold">Variant Reading</dt>
+                <dd class="m-0">${variant.annotation}</dd>
+            </div>
+        </dl>`;
+    }
     
     // Function to show variant popup
     function showVariantPopup(event, element) {
@@ -131,7 +151,7 @@ function initVariantAnnotations() {
         }
         
         const annotationId = element.getAttribute('data-annotation-id');
-        
+        const annotationType = element.getAttribute('data-annotation-type') || 'variant';
         // Create popup
         const popup = document.createElement('div');
         popup.className = 'variant-popup';
@@ -148,23 +168,19 @@ function initVariantAnnotations() {
         activePopup = popup;
         
         // Fetch annotation data
-        fetch(`/text-annotations/annotation/${annotationId}/`)
+        fetch(`/text-annotations/annotation/${annotationType}/${annotationId}/`)
             .then(response => {
                 if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
             })
             .then(data => {
+                const variantTextEl = data.annotation ? formatVariant(data) : '';
+                const additionalNotesEl = data.notes ? `<div class="variant-popup-manuscript">${data.notes}</div>` : '';
                 // Use specific template for variant display
                 popup.innerHTML = `
                     <div class="variant-popup-title">Textual Variant</div>
-                    <div class="variant-popup-content">
-                        <p class="mb-2"><strong>Original text:</strong> "${element.textContent}"</p>
-                        <p class="mb-1"><strong>Variant reading:</strong></p>
-                        <p>${data.annotation}</p>
-                    </div>
-                    <div class="variant-popup-manuscript">
-                        Click on variant in sidebar for more details
-                    </div>
+                    <div class="variant-popup-content">${variantTextEl}</div>
+                    ${additionalNotesEl}
                 `;
                 
                 // Reposition after content loaded

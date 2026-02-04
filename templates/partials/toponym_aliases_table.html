@@ -1,0 +1,43 @@
+{% if aggregated_aliases.aliases %}
+    <div class="aliases mb-4">
+        <h3 class="text-2xl mb-4">
+            Variant spellings of
+            <strong><span>{{ aggregated_aliases.name }}</span></strong>
+            in <em>Sfera</em> manuscripts
+        </h3>
+        <div class="max-w-4xl mx-auto">
+            <div class="overflow-x-auto shadow rounded-lg">
+                <table class="w-full table-fixed divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="w-1/3 px-4 py-3 text-center text-xs font-medium uppercase">
+                                Variant
+                            </th>
+                            <th scope="col" class="w-2/3 px-4 py-3 text-left text-xs font-medium uppercase">
+                                Appears in the following manuscripts:
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for alias in aggregated_aliases.aliases %}
+                            {% if alias.placename_alias is not None %}
+                                <tr>
+                                    <td class="px-4 py-3 text-base text-center break-words">
+                                        <span><strong>{{ alias.placename_alias }}</strong></span>
+                                    </td>
+                                    <td class="px-4 py-3 text-base break-words">
+                                        {% for ms in alias.manuscripts %}
+                                            <a href="{% url 'manuscript' ms.siglum %}" class="underline hover:no-underline">{{ ms.siglum }}</a>{% if not forloop.last %}, {% endif %}
+                                        {% endfor %}
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <p class="pb-2">There are no aliases associated with this toponym.</p>
+{% endif %}

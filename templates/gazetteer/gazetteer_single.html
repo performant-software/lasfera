@@ -3,129 +3,49 @@
 
 {% block title %}Data on toponym {{ aggregated_aliases.name }} - La Sfera{% endblock title %}
 
+{% block extra_css %}
+    <style>
+        .description a {
+            text-decoration-line: underline;
+        }
+        .description a:hover {
+            text-decoration-line: none;
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
-    <div class="mx-auto container pt-3">
-        <p class="pb-2">&larr; <a class="underline hover:no-underline" href="{% url 'toponyms' %}">Return to gazetteer</a>.</p>
-        <h3 class="text-4xl pb-3 font-bold" id="text">
-            <span class="border-b border-red-700 font-normal">{{ aggregated_aliases.name }}</span>
-        </h3>
+    <div class="mx-auto container p-4 m-4">
+        <p class="pb-2">&larr; <a class="underline hover:no-underline" href="{% url 'toponyms' %}">Return to gazetteer</a></p>
+        <h1 class="text-4xl my-4 font-bold" id="text">
+            <span class="border-b border-red-700 font-normal">{{ toponym.name }}</span>
+        </h1>
 
-        <section id="manuscript" class="flex flex-col md:flex-row w-full p-4 mb-10">
-            <div class="flex flex-col md:flex-row w-full p-2 gap-x-1">
-        {# Left column: display toponym details #}
-                <div class="lg:w-1/2 p-4">
+        <section id="manuscript" class="flex flex-col md:flex-row w-full">
+            <div class="flex flex-col md:flex-row w-full gap-x-8">
+                {# Left column: display toponym details #}
+                <div class="lg:w-1/2">
+                    {# description #}
+                    {% if toponym.description %}
+                        <div class="description py-4">
+                            {{ toponym.description|safe }}
+                        </div>
+                    {% endif %}
 
-                {# display the location aliases if any #}
-               {% if aggregated_aliases.aliases %}
-<div class="aliases mb-4">
-    <h4 class="mb-4">Some of the variant spellings for <strong><span>{{ aggregated_aliases.name }}</span></strong> that appear in <em>Sfera</em> manuscripts are:</h4>
-
-    <div class="max-w-4xl mx-auto">
-    <div class="overflow-x-auto shadow rounded-lg">
-        <table class="w-full table-fixed divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th scope="col" class="w-1/3 px-4 py-3 text-center text-xs font-medium uppercase">Variant</th>
-                    <th scope="col" class="w-2/3 px-4 py-3 text-left text-xs font-medium uppercase">Appears in the following manuscripts:</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {% for alias in aggregated_aliases.aliases %}
-                {% if alias.placename_alias is not None %}
-                <tr>
-                    <td class="px-4 py-3 text-base text-center break-words">
-                        <span><strong>{{ alias.placename_alias }}</strong></span>
-                    </td>
-                    <td class="px-4 py-3 text-base break-words">
-   {% for ms in alias.manuscripts %}
-       <a href="{% url 'manuscript' ms.siglum %}" class="underline hover:no-underline">{{ ms.siglum }}</a>{% if not forloop.last %}, {% endif %}
-   {% endfor %}
-</td>
-                </tr>
-                {% endif %}
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-   </div>
-{% else %}
-<p class="pb-2">There are no aliases associated with this toponym.</p>
-{% endif %} 
-     
-                                              </div> {# end: left column #}
-
-        {# Right column #}
-                <div class="lg:w-1/2 p-4 space-y-4">
-{# Line codes for the toponym #}
-                <div class="mb-6 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-lg shadow-sm border border-gray-200">
-    <h4 class="text-lg font-medium mb-4">The toponym <strong><span>{{ aggregated_aliases.name }}</span></strong> is mentioned in <em>La Sfera</em> on the follow line codes:</h4>
-
-    {% if line_codes %}
-        <div class="flex flex-wrap gap-3 mt-4">
-            {% for line_code in line_codes %}
-                <a href="/manuscripts/Urb1/stanzas/#{{ line_code.line_code }}" 
-                   class="group inline-flex items-center px-3 py-2 bg-white border border-gray-300 rounded-md hover:bg-blue-50 hover:border-blue-300 hover:shadow-md transition-all">
-                    <span class="font-mono text-gray-800 group-hover:text-blue-700">{{ line_code.line_code }}</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1.5 text-gray-400 group-hover:text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                </a>
-            {% endfor %}
-        </div>
-    {% else %}
-        <div class="bg-white p-4 rounded border border-gray-200 text-center">
-            <span class="text-gray-500 italic">No line codes available for this toponym.</span>
-        </div>
-    {% endif %}
-    
-    <div class="mt-4 text-sm text-gray-600">
-        <p>Click on any line code to view it in context within the text.</p>
-    </div>
-    </div>
-
-            {# Map content #}
+                    {# display the location aliases if any #}
+                    {% include "partials/toponym_aliases_table.html" %}
+                </div>
+                {# Right column #}
+                <div class="lg:w-1/2 space-y-4">
+                    {# Line codes for the toponym #}
+                    {% include "partials/toponym_line_codes.html" %}
+                    {# Map content #}
                     <div class="flex-auto mb-2">
                         <div id="map" style="height: 255px; width: 100%">Map of the location {{ toponym }}</div>
                     </div>
-
-<div class="flex-auto">
-  {% if aggregated_aliases.aliases %}
-<ul class="list-disc ml-4 mb-6">
-        {% if toponym.authority_file %}
-            <p><strong>Authority File</strong>: <a class="underline hover:no-underline" href="{{ toponym.authority_file }}">{{ toponym.authority_file }}</a></p>
-        {% endif %}
-    <p><strong>Coordinates</strong>: <span id="coordinates-container" data-latitude="{{ toponym.latitude }}" data-longitude="{{ toponym.longitude }}"></span></p> 
-    <div class="mt-6">
-        {% if aggregated_aliases.placename_moderns %}
-            <li><strong>Modern name</strong>: 
-                {% for modern in aggregated_aliases.placename_moderns %}
-                    <span>{{ modern }}</span>{% if not forloop.last %}, {% endif %}
-                {% endfor %}
-            </li>
-        {% endif %}
-        {% if aggregated_aliases.placename_standardizeds %}
-            <li><strong>Standardized name</strong>: 
-                {% for standardized in aggregated_aliases.placename_standardizeds %}
-                    <span>{{ standardized }}</span>{% if not forloop.last %}, {% endif %}
-                {% endfor %}
-            </li>
-        {% endif %}
-        {% if aggregated_aliases.placename_ancients %}
-            <li><strong>Ancient name</strong>: 
-                {% for ancient_name in aggregated_aliases.placename_ancients %}
-                    <span>{{ ancient_name }}</span>{% if not forloop.last %}, {% endif %}
-                {% endfor %}
-            </li>
-        {% endif %}
-    </ul>
-    {% else %}
-    <p class="pb-2">There are no aliases associated with this toponym.</p>
-    {% endif %}
-    </div>
-
-    </div>
-                     </div>{# end: right column #}
+                    {# Additional metadata #}
+                    {% include "partials/toponym_metadata.html" %}
+                </div>
             </div>
         </section>
     </div>
@@ -143,9 +63,9 @@
                 let map = L.map('map').setView([latitude, longitude], 6);
 
             // Add an OpenStreetMap tile layer
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
-                    maxZoom: 18,
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    maxZoom: 20
                 }).addTo(map);
 
             // Add a marker at the given location

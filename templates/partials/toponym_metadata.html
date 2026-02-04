@@ -1,0 +1,39 @@
+<div class="flex-auto">
+    {% if aggregated_aliases.aliases %}
+        {% if toponym.authority_file %}
+            <p class="ml-4">
+                <strong>Authority File</strong>:
+                <a class="underline hover:no-underline" href="{{ toponym.authority_file }}">{{ toponym.authority_file }}</a>
+            </p>
+        {% endif %}
+        <p class="ml-4">
+            <strong>Coordinates</strong>
+            <span id="coordinates-container" data-latitude="{{ toponym.latitude }}" data-longitude="{{ toponym.longitude }}"></span>
+        </p>
+        <ul class="list-disc ml-4 mb-6">
+            {% if aggregated_aliases.placename_moderns %}
+                <li><strong>Modern name</strong>: 
+                    {% for modern in aggregated_aliases.placename_moderns %}
+                        <span>{{ modern }}</span>{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                </li>
+            {% endif %}
+            {% if aggregated_aliases.placename_standardizeds %}
+                <li><strong>Standardized name</strong>: 
+                    {% for standardized in aggregated_aliases.placename_standardizeds %}
+                        <span>{{ standardized }}</span>{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                </li>
+            {% endif %}
+            {% if aggregated_aliases.placename_ancients %}
+                <li><strong>Ancient name</strong>: 
+                    {% for ancient_name in aggregated_aliases.placename_ancients %}
+                        <span>{{ ancient_name }}</span>{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                </li>
+            {% endif %}
+        </ul>
+    {% else %}
+        <p class="pb-2">There are no aliases associated with this toponym.</p>
+    {% endif %}
+</div>

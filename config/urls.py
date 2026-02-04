@@ -1,5 +1,3 @@
-import os.path
-
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -28,5 +26,7 @@ urlpatterns = [
     path("gallery/", include("gallery.urls", namespace="gallery")),
     path("cms/", include(wagtailadmin_urls)),
     path("pages/", include(wagtail_urls)),
-    path("__reload__/", include("django_browser_reload.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+if settings.DEBUG:
+    urlpatterns += [path("__reload__/", include("django_browser_reload.urls"))]

@@ -1,14 +1,15 @@
+from itertools import chain
 import logging
 import re
 from typing import List, Tuple
 
-from bs4 import BeautifulSoup
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
-from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.db.models import Q
+from django.urls import reverse
+from django.utils.text import slugify
 from prose.fields import RichTextField
 
 from manuscript.utils import get_canvas_id_for_folio
@@ -182,6 +183,10 @@ class Library(models.Model):
         city = self.city if self.city is not None else "No city name provided"
         library = self.library if self.library is not None else ""
         return city + " - " + library
+
+    @property
+    def comma_formatted(self):
+        return ", ".join([part for part in [self.city, self.library] if part])
 
     def natural_key(self):
         return (self.library, self.city)
@@ -367,76 +372,32 @@ class ViewerNote(models.Model):
         return "Viewer Note"
 
 
-class StanzaVariant(models.Model):
-    """Notes about textual variants within a stanza"""
-
-    AVAIL_LANGUAGE = (
-        ("en", "English"),
-        ("it", "Italian"),
-    )
-
-    # TODO: Ability to have variation in lines
-    id = models.AutoField(primary_key=True)
-    stanza_variation = models.TextField(
-        max_length=500,
-        blank=True,
-        null=True,
-        verbose_name="Significant Variations",
-        help_text="The variation in the stanza.",
-    )
-    stanza_variation_line_code_starts = models.CharField(
-        blank=True,
-        null=True,
-        validators=[validate_line_number_variant_code],
-        max_length=20,
-        help_text="Stanza variant line code in the form of '01.01.01a'.",
-        verbose_name="Variant line code",
-    )
-    stanza = models.ForeignKey(
-        "Stanza",
-        on_delete=models.CASCADE,
-        blank=True,
-        null=True,
-        editable=False,
-    )
-
-    def provide_snippet_of_stanza(self):
-        return self.stanza.stanza_variation[:100]
-
-    def parse_line_code(self, code):
-        """Parse a line code into book, stanza, line components"""
-        if not code:
-            return None
-        parts = code.split(".")
-        return {"book": int(parts[0]), "stanza": int(parts[1]), "line": int(parts[2])}
-
-    def save(self, *args, **kwargs):
-        # we trim the letter code off the stanza_variation_line_code_starts
-        # so we can look for the FK to the Stanza
-        try:
-            stanza_line_code_starts = self.stanza_variation_line_code_starts[:-1]
-        except TypeError:
-            stanza_line_code_starts = None
-
-        try:
-            self.stanza = Stanza.objects.get(
-                stanza_line_code_starts=stanza_line_code_starts
-            )
-        except ObjectDoesNotExist:
-            pass
-
-        super().save(*args, **kwargs)
-
-    def __str__(self) -> str:
-        return (
-            "Stanza "
-            + self.stanza_variation_line_code_starts
-            + " associated with "
-            + self.stanza.stanza_line_code_starts
+class AnnotatableMixin:
+    @property
+    def annotations(self):
+        """
+        Combines the related annotation instances into a single list
+        for templates.
+        """
+        return chain(
+            self.editorial_notes.all(),
+            self.cross_references.all(),
+            self.textual_variants.all(),
         )
 
 
-class Stanza(models.Model):
+class RichTextMixin:
+    """mixin for a save method to sanitize rich text fields for frontend display"""
+
+    def save(self, *args, **kwargs):
+        # remove extra empty lines added in prosemirror
+        if self.stanza_text:
+            pattern = r"(<br\s*/?>|<div><br\s*/?></div>)+$"
+            self.stanza_text = re.sub(pattern, "", self.stanza_text.strip()).strip()
+        super().save(*args, **kwargs)
+
+
+class Stanza(models.Model, AnnotatableMixin, RichTextMixin):
     """A stanza from the manuscript."""
 
     STANZA_LANGUAGE = (
@@ -472,11 +433,26 @@ class Stanza(models.Model):
     language = models.CharField(
         max_length=2, choices=STANZA_LANGUAGE, blank=True, null=True
     )
-    annotations = GenericRelation(
-        "textannotation.TextAnnotation",
+    editorial_notes = GenericRelation(
+        "textannotation.EditorialNote",
         content_type_field="content_type",
         object_id_field="object_id",
         related_query_name="stanza",
+    )
+    cross_references = GenericRelation(
+        "textannotation.CrossReference",
+        content_type_field="content_type",
+        object_id_field="object_id",
+        related_query_name="stanza",
+    )
+    textual_variants = GenericRelation(
+        "textannotation.TextualVariant",
+        content_type_field="content_type",
+        object_id_field="object_id",
+        related_query_name="stanza",
+    )
+    is_rubric = models.BooleanField(
+        default=False, help_text="Designates this stanza as a rubric/header."
     )
 
     def __str__(self) -> str:
@@ -531,7 +507,7 @@ class Stanza(models.Model):
             existing_stanzas = Stanza.objects.filter(
                 stanza_line_code_starts__startswith=line_code
             )
-            variant_code = line_code + chr(ord("a") + existing_stanza.count())
+            variant_code = line_code + chr(ord("a") + existing_stanzas.count())
 
             try:
                 self.stanza = Stanza.objects.get(stanza_line_code_starts=variant_code)
@@ -552,10 +528,10 @@ class Stanza(models.Model):
             )
 
     class Meta:
-        ordering = ["id"]
+        ordering = ("stanza_line_code_starts",)
 
 
-class StanzaTranslated(models.Model):
+class StanzaTranslated(models.Model, AnnotatableMixin, RichTextMixin):
     """This model holds the English version of the stanzas."""
 
     id = models.AutoField(primary_key=True)
@@ -584,11 +560,26 @@ class StanzaTranslated(models.Model):
     language = models.CharField(
         max_length=2, choices=Stanza.STANZA_LANGUAGE, blank=True, null=True
     )
-    annotations = GenericRelation(
-        "textannotation.TextAnnotation",
+    editorial_notes = GenericRelation(
+        "textannotation.EditorialNote",
         content_type_field="content_type",
         object_id_field="object_id",
         related_query_name="stanza_translated",
+    )
+    cross_references = GenericRelation(
+        "textannotation.CrossReference",
+        content_type_field="content_type",
+        object_id_field="object_id",
+        related_query_name="stanza_translated",
+    )
+    textual_variants = GenericRelation(
+        "textannotation.TextualVariant",
+        content_type_field="content_type",
+        object_id_field="object_id",
+        related_query_name="stanza_translated",
+    )
+    is_rubric = models.BooleanField(
+        default=False, help_text="Designates this stanza as a rubric/header."
     )
 
     def __str__(self) -> str:
@@ -597,15 +588,10 @@ class StanzaTranslated(models.Model):
     class Meta:
         verbose_name = "Stanza translation"
         verbose_name_plural = "Stanza translations"
+        ordering = ("stanza_line_code_starts",)
 
 
-# class FolioStanzaMixin:
-#     def get_stanzas(self) -> List["Stanza"]:
-#         """Get all stanzas that appear on this folio in order."""
-#         return get_stanzas_in_folio(self)
-
-
-class Folio(models.Model):  # (FolioStanzaMixin, models.Model):
+class Folio(models.Model):
     """This provides a way to collect several stanzas onto a single page, and associate them with a single manuscript."""
 
     FOLIO_MAP_CHOICES = (
@@ -739,7 +725,8 @@ class SingleManuscript(models.Model):
         if self.siglum:
             return self.siglum
         else:
-            return "No siglum provided"
+            no_siglum = "No siglum provided"
+            return f"{no_siglum} ({self.shelfmark})" if self.shelfmark else no_siglum
 
     def has_pdf_or_images(self):
         if self.photographs:
@@ -870,7 +857,8 @@ class Location(models.Model):
                 self.toponym_type = "pm"
         super(Location, self).save(*args, **kwargs)
 
-    def get_slug(self):
+    @property
+    def slug(self):
         """Get the slug for this toponym, with fallback"""
         if not self.name or not self.name.strip():
             # Fallback options if name is empty
@@ -882,9 +870,7 @@ class Location(models.Model):
 
     def get_absolute_url(self):
         """Return the URL for this toponym using the slug with fallback"""
-        from django.urls import reverse
-
-        slug = self.get_slug()
+        slug = self.slug
         if not slug:
             # If we still couldn't generate a slug, use the ID-based URL
             return reverse("toponym_by_id", kwargs={"placename_id": self.placename_id})
@@ -950,3 +936,22 @@ class LocationAlias(models.Model):
 
     def __str__(self) -> str:
         return f"{self.placename_from_mss} / {self.placename_standardized} / {self.placename_modern} / {self.placename_alias}"
+
+
+class ManuscriptFamily(models.Model):
+    """Model for a family to group multiple manuscripts together"""
+
+    name = models.CharField(max_length=255)
+    notes = models.TextField(blank=True)
+
+    manuscripts = models.ManyToManyField(
+        SingleManuscript, related_name="family", blank=True
+    )
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Manuscript Family"
+        verbose_name_plural = "Manuscript Families"
+        ordering = ["name"]

@@ -1,19 +1,18 @@
-import json
+from itertools import chain
 import logging
 import os
 import random
-import re
 from collections import defaultdict
 from html import unescape
-from urllib.parse import urlparse
 
 import requests
-from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.staticfiles import finders
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q, Prefetch
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.templatetags.static import static
 from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
@@ -28,11 +27,10 @@ from manuscript.models import (
     Stanza,
     StanzaTranslated,
     line_code_to_numeric,
-    parse_line_code,
 )
 from manuscript.serializers import SingleManuscriptSerializer, ToponymSerializer
 from pages.models import AboutPage, SitePage
-from textannotation.models import TextAnnotation
+from textannotation.models import CrossReference, EditorialNote, TextualVariant
 
 logger = logging.getLogger(__name__)
 
@@ -63,41 +61,34 @@ def manuscript_stanzas(request, siglum):
     folios = manuscript.folio_set.all().order_by("folio_number")
     logger.info(f"Found {folios.count()} folios for manuscript {siglum}")
 
-    # Check if this is Urb1
-    is_urb1 = siglum == "Urb1"
+    stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
 
-    # Special handling for the Urb1 manuscript which we know works
-    if is_urb1:
-        # For Urb1, use the well-tested filtering approach
-        stanzas = Stanza.objects.filter(
-            folios__in=folios, folios__manuscript=manuscript
-        ).distinct()
-        logger.info(f"Found {stanzas.count()} stanzas for Urb1 using direct filtering")
-    else:
-        # For all other manuscripts
-        if folios.exists():
-            # If we have folios, try to use them to find matching stanzas
-            logger.info(f"Using folios to find stanzas for {siglum}")
-            stanzas = Stanza.objects.filter(
-                folios__in=folios, folios__manuscript=manuscript
-            ).distinct()
-
-            if stanzas.count() == 0:
-                logger.info(
-                    f"No stanzas found using folios for {siglum}, using all stanzas with line codes"
-                )
-                stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
-        else:
-            # No folios, so just use all stanzas with line codes
-            logger.info(
-                f"No folios found for {siglum}, using all stanzas with line codes"
-            )
-            stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
-
+    # Prefetch for efficiency
+    stanzas = stanzas.prefetch_related(
+        "folios",
+        "editorial_notes",
+        "cross_references",
+        Prefetch(
+            "textual_variants",
+            queryset=TextualVariant.objects.filter(
+                manuscript=manuscript
+            ).select_related("manuscript"),
+        ),
+    )
     logger.info(f"Found {stanzas.count()} total stanzas")
 
     # Get translated stanzas for all stanzas
     translated_stanzas = StanzaTranslated.objects.filter(stanza__in=stanzas).distinct()
+    translated_stanzas = translated_stanzas.prefetch_related(
+        "editorial_notes",
+        "cross_references",
+        Prefetch(
+            "textual_variants",
+            queryset=TextualVariant.objects.filter(
+                manuscript=manuscript
+            ).select_related("manuscript"),
+        ),
+    )
     logger.info(f"Found {translated_stanzas.count()} translated stanzas")
 
     # Process stanzas into books structure
@@ -162,12 +153,12 @@ def manuscript_stanzas(request, siglum):
                 if linked_translations:
                     # Override the translations with the directly linked ones
                     translated_stanza_group = linked_translations
-                    
+
             # Ensure translations are always sorted by line code
             if translated_stanza_group:
                 translated_stanza_group = sorted(
-                    translated_stanza_group, 
-                    key=lambda s: line_code_to_numeric(s.stanza_line_code_starts)
+                    translated_stanza_group,
+                    key=lambda s: line_code_to_numeric(s.stanza_line_code_starts),
                 )
 
             # Create the stanza group - we'll show all stanzas for now
@@ -189,6 +180,9 @@ def manuscript_stanzas(request, siglum):
                             matching_folio = line_code_to_folio[stanza_code]
 
                             # If this is a new folio, mark it in the stanza group
+                            existing_folio_ids = {
+                                f.id for f in first_stanza.folios.all()
+                            }
                             if current_folio is None or matching_folio != current_folio:
                                 current_folio = matching_folio
                                 stanza_group["new_folio"] = True
@@ -198,9 +192,7 @@ def manuscript_stanzas(request, siglum):
                                 )
 
                                 # Associate the stanza with this folio if not already done
-                                if not first_stanza.folios.filter(
-                                    id=matching_folio.id
-                                ).exists():
+                                if matching_folio.id not in existing_folio_ids:
                                     first_stanza.folios.add(matching_folio)
                     except Exception as e:
                         logger.warning(
@@ -211,7 +203,15 @@ def manuscript_stanzas(request, siglum):
             paired_books[book_number].append(stanza_group)
 
     # Get all manuscripts for the dropdown
-    manuscripts = SingleManuscript.objects.all()
+    manuscripts = (
+        SingleManuscript.objects.select_related("library")
+        .annotate(
+            has_variants=Exists(
+                TextualVariant.objects.filter(manuscript=OuterRef("pk"))
+            )
+        )
+        .all()
+    )
 
     # Count the total stanzas we're sending to the template
     total_stanzas = sum(len(book) for book in paired_books.values())
@@ -246,46 +246,96 @@ def create_annotation(request):
         annotation_text = request.POST.get("annotation")
         annotation_type = request.POST.get("annotation_type")
         model_type = request.POST.get("model_type", "stanza")
+        notes = request.POST.get("notes")
+
+        TYPE_MAP = {
+            "note": EditorialNote,
+            "reference": CrossReference,
+            "variant": TextualVariant,
+        }
+        AnnotationModel = TYPE_MAP.get(annotation_type)
+        if not AnnotationModel:
+            return JsonResponse(
+                {"success": False, "error": "Invalid annotation type"}, status=400
+            )
 
         # Validate required fields
-        if not all([object_id, selected_text, annotation_text, annotation_type]):
-            missing_fields = [
-                field
-                for field, value in {
-                    "stanza_id": object_id,
-                    "selected_text": selected_text,
-                    "annotation": annotation_text,
-                    "annotation_type": annotation_type,
-                }.items()
-                if not value
-            ]
-            logger.error(f"Missing required fields: {missing_fields}")
+        if not all([object_id, selected_text, annotation_type]):
             return JsonResponse(
-                {
-                    "success": False,
-                    "error": f"Missing required fields: {', '.join(missing_fields)}",
-                },
-                status=400,
+                {"success": False, "error": "Missing core required fields"}, status=400
             )
+
+        if annotation_type == "variant":
+            # variant: need either annotation_text OR notes
+            if not annotation_text and not notes:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Variants require either variant text or notes.",
+                    },
+                    status=400,
+                )
+        else:
+            # otherwise: need annotation_text
+            if not annotation_text:
+                return JsonResponse(
+                    {"success": False, "error": "Annotation text is required."},
+                    status=400,
+                )
 
         # Get the appropriate model and object
         if model_type == "stanzatranslated":
             content_type = ContentType.objects.get_for_model(StanzaTranslated)
-            annotated_object = get_object_or_404(StanzaTranslated, id=object_id)
+            get_object_or_404(StanzaTranslated, id=object_id)
         else:
             content_type = ContentType.objects.get_for_model(Stanza)
-            annotated_object = get_object_or_404(Stanza, id=object_id)
+            get_object_or_404(Stanza, id=object_id)
+
+        try:
+            from_pos = int(request.POST.get("from_pos", 0))
+            to_pos = int(request.POST.get("to_pos", 0))
+        except (ValueError, TypeError):
+            from_pos, to_pos = 0, 0
 
         # Create the annotation
-        annotation = TextAnnotation.objects.create(
-            content_type=content_type,
-            object_id=object_id,
-            selected_text=selected_text,
-            annotation=annotation_text,
-            annotation_type=annotation_type,
-            from_pos=request.POST.get("from_pos"),
-            to_pos=request.POST.get("to_pos"),
-        )
+        annotation_fields = {
+            "content_type": content_type,
+            "object_id": object_id,
+            "selected_text": selected_text,
+            "annotation": annotation_text,
+            "from_pos": from_pos,
+            "to_pos": to_pos,
+        }
+        # special fields for Variant type
+        if annotation_type == "variant":
+            annotation_fields["notes"] = notes
+            annotation_fields["editor_initials"] = request.POST.get(
+                "editor_initials", ""
+            )
+            try:
+                annotation_fields["significance"] = int(
+                    request.POST.get("significance", 0)
+                )
+            except (ValueError, TypeError):
+                annotation_fields["significance"] = 0
+            variant_id = request.POST.get("variant_id", "").strip()
+            annotation_fields["variant_id"] = variant_id if variant_id else None
+
+            manuscript_id = request.POST.get("manuscript_id")
+
+            if manuscript_id:
+                # Optional: specific validation that the ID is valid integer
+                try:
+                    annotation_fields["manuscript_id"] = int(manuscript_id)
+                except (ValueError, TypeError):
+                    return JsonResponse(
+                        {"success": False, "error": "Invalid Manuscript"}, status=400
+                    )
+            else:
+                # Decide if manuscript is required. If so, return error here.
+                annotation_fields["manuscript_id"] = None
+
+        annotation = AnnotationModel.objects.create(**annotation_fields)
 
         return JsonResponse(
             {
@@ -304,9 +354,11 @@ def create_annotation(request):
 def get_annotations(request, stanza_id):
     try:
         stanza = Stanza.objects.get(id=stanza_id)
-        annotations = TextAnnotation.objects.filter(
-            content_type=ContentType.objects.get_for_model(Stanza), object_id=stanza.id
-        )
+        notes = stanza.editorial_notes.all()
+        refs = stanza.cross_references.all()
+        variants = stanza.textual_variants.all()
+
+        annotations = chain(notes, refs, variants)
 
         return JsonResponse(
             [
@@ -326,20 +378,31 @@ def get_annotations(request, stanza_id):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-def get_annotation(request, annotation_id):
+def get_annotation(request, annotation_type, annotation_id):
+    TYPE_MAP = {
+        "note": EditorialNote,
+        "reference": CrossReference,
+        "variant": TextualVariant,
+    }
     try:
-        annotation = get_object_or_404(TextAnnotation, id=annotation_id)
+        AnnotationModel = TYPE_MAP.get(annotation_type)
+        annotation = get_object_or_404(AnnotationModel, id=annotation_id)
 
         data = {
             "id": annotation.id,
             "selected_text": annotation.selected_text,
             "annotation": annotation.annotation,
-            "annotation_type": annotation.get_annotation_type_display(),
+            "annotation_type": annotation_type,
         }
+
+        if annotation_type == "variant":
+            data["manuscript"] = annotation.manuscript.siglum
+            data["line_code"] = str(annotation.content_object)
+            data["notes"] = annotation.notes
 
         return JsonResponse(data)
 
-    except TextAnnotation.DoesNotExist:
+    except AnnotationModel.DoesNotExist:
         logger.error(f"Annotation {annotation_id} not found")
         return JsonResponse({"error": "Annotation not found"}, status=404)
     except Exception as e:
@@ -359,7 +422,7 @@ def process_stanzas(stanzas, is_translated=False):
             stanza.unescaped_stanza_text = unescape(stanza.stanza_text)
 
         books[book_number][stanza_number].append(stanza)
-        
+
         # Sort stanzas within each stanza number by line code for proper ordering
         books[book_number][stanza_number].sort(
             key=lambda s: line_code_to_numeric(s.stanza_line_code_starts)
@@ -376,24 +439,16 @@ def index(request: HttpRequest):
 
     # Prefetch image URLs
     image_directory = "images/home/"
-    static_dir = os.path.join(settings.STATIC_ROOT, image_directory)
-    if not os.path.exists(static_dir):
-        static_dir = None
-        for static_dir_path in settings.STATICFILES_DIRS:
-            potential_dir = os.path.join(static_dir_path, image_directory)
-            if os.path.exists(potential_dir):
-                static_dir = potential_dir
-                break
-
     image_urls = []
-    if static_dir:
+    static_dir = finders.find(image_directory)
+    if static_dir and os.path.exists(static_dir):
         images = [
             f
             for f in os.listdir(static_dir)
             if os.path.isfile(os.path.join(static_dir, f))
         ]
         for image in images:
-            image_urls.append(os.path.join(settings.STATIC_URL, image_directory, image))
+            image_urls.append(static(f"images/home/{image}"))
 
     # Shuffle the image URLs to simulate randomness
     random.shuffle(image_urls)
@@ -405,27 +460,27 @@ def index(request: HttpRequest):
             {
                 "name": "Edition",
                 "url": "/manuscripts/Urb1/stanzas/",
-                "thumbnail": "/static/images/home/wellcome230_p44.webp",
+                "thumbnail": static("images/home/wellcome230_p44.webp"),
             },
             {
                 "name": "Gazetteer",
                 "url": "/toponyms",
-                "thumbnail": "/static/images/home/bncf_csopp2618_m1b.webp",
+                "thumbnail": static("images/home/bncf_csopp2618_m1b.webp"),
             },
             {
                 "name": "Resources",
                 "url": "#",
-                "thumbnail": "/static/images/home/basel_cl194_p59.webp",
+                "thumbnail": static("images/home/basel_cl194_p59.webp"),
             },
             {
                 "name": "Gallery",
                 "url": "/pages/gallery/",
-                "thumbnail": "/static/images/home/nypl_f1v_ship.webp",
+                "thumbnail": static("images/home/nypl_f1v_ship.webp"),
             },
             {
                 "name": "About",
                 "url": "/about/",
-                "thumbnail": "/static/images/home/oxford74_jerusalem.webp",
+                "thumbnail": static("images/home/oxford74_jerusalem.webp"),
             },
         ],
     }
@@ -523,13 +578,27 @@ def get_canvas_url_for_folio(manuscript_manifest, folio):
 def stanzas(request: HttpRequest):
     folios = Folio.objects.all()
     stanzas = (
-        Stanza.objects.prefetch_related("annotations")
+        Stanza.objects.prefetch_related(
+            "editorial_notes",
+            "cross_references",
+            Prefetch(
+                "textual_variants",
+                queryset=TextualVariant.objects.select_related("manuscript"),
+            ),
+        )
         .all()
         .order_by("stanza_line_code_starts")
     )
 
     translated_stanzas = (
-        StanzaTranslated.objects.prefetch_related("annotations")
+        StanzaTranslated.objects.prefetch_related(
+            "editorial_notes",
+            "cross_references",
+            Prefetch(
+                "textual_variants",
+                queryset=TextualVariant.objects.select_related("manuscript"),
+            ),
+        )
         .all()
         .order_by("stanza_line_code_starts")
     )
@@ -559,12 +628,12 @@ def stanzas(request: HttpRequest):
                 ]
                 if linked_translations:
                     translated_stanza_group = linked_translations
-                    
+
             # Ensure translations are always sorted by line code
             if translated_stanza_group:
                 translated_stanza_group = sorted(
-                    translated_stanza_group, 
-                    key=lambda s: line_code_to_numeric(s.stanza_line_code_starts)
+                    translated_stanza_group,
+                    key=lambda s: line_code_to_numeric(s.stanza_line_code_starts),
                 )
 
             # Add folio information
@@ -576,52 +645,26 @@ def stanzas(request: HttpRequest):
             # Check if this is a new folio by looking at the first stanza's folios
             if original_stanzas:
                 # Get the first stanza's folios ordered by folio_number
-                stanza_folios = original_stanzas[0].folios.order_by("folio_number")
+                stanza_folios = sorted(
+                    original_stanzas[0].folios.all(), key=lambda f: f.folio_number
+                )
 
                 # If the stanza has any folios and the current folio has changed
-                if stanza_folios.exists() and (
-                    current_folio is None or stanza_folios.first() != current_folio
+                if stanza_folios and (
+                    current_folio is None or stanza_folios[0] != current_folio
                 ):
-                    current_folio = stanza_folios.first()
+                    current_folio = stanza_folios[0]
                     stanza_group["new_folio"] = True
                     stanza_group["show_viewer"] = (
                         True  # Only show viewer for new folios
                     )
                     # Optionally add information about all folios this stanza appears on
-                    stanza_group["folios"] = list(
-                        stanza_folios.values_list("folio_number", flat=True)
-                    )
+                    stanza_group["folios"] = [f.folio_number for f in stanza_folios]
                 else:
                     stanza_group["new_folio"] = False
 
             paired_books[book_number].append(stanza_group)
-    # paired_books = {}
-    # for book_number, stanza_dict in books.items():
-    #     paired_books[book_number] = []
-    #     current_folio = None
-    #
-    #     for stanza_number, original_stanzas in stanza_dict.items():
-    #         # Get corresponding translated stanzas
-    #         translated_stanza_group = translated_books.get(book_number, {}).get(
-    #             stanza_number, []
-    #         )
-    #
-    #         # Add folio information
-    #         stanza_group = {
-    #             "original": original_stanzas,
-    #             "translated": translated_stanza_group,
-    #         }
-    #
-    #         # Check if this is a new folio
-    #         if original_stanzas and original_stanzas[0].related_folio != current_folio:
-    #             current_folio = original_stanzas[0].related_folio
-    #             stanza_group["new_folio"] = True
-    #             stanza_group["show_viewer"] = True  # Only show viewer for new folios
-    #         else:
-    #             stanza_group["new_folio"] = False
-    #
-    #         paired_books[book_number].append(stanza_group)
-    #
+
     manuscript_data = {
         "iiif_url": (
             default_manuscript.iiif_url
@@ -684,7 +727,9 @@ def manuscripts(request: HttpRequest):
     """View for displaying all manuscripts with proper folio grouping"""
     folios = Folio.objects.all()
     stanzas = (
-        Stanza.objects.prefetch_related("annotations", "folios")
+        Stanza.objects.prefetch_related(
+            "folios", "editorial_notes", "cross_references", "textual_variants"
+        )
         .all()
         .order_by("stanza_line_code_starts")
     )
@@ -729,18 +774,18 @@ def manuscripts(request: HttpRequest):
             # Check if this is a new folio by looking at the first stanza's folios
             if original_stanzas:
                 # Get the first stanza's folios ordered by folio_number
-                stanza_folios = original_stanzas[0].folios.order_by("folio_number")
+                stanza_folios = sorted(
+                    original_stanzas[0].folios.all(), key=lambda f: f.folio_number
+                )
 
                 # If the stanza has any folios and the current folio has changed
-                if stanza_folios.exists() and (
-                    current_folio is None or stanza_folios.first() != current_folio
+                if stanza_folios and (
+                    current_folio is None or stanza_folios[0] != current_folio
                 ):
-                    current_folio = stanza_folios.first()
+                    current_folio = stanza_folios[0]
                     stanza_pair["new_folio"] = True
                     # Add information about all folios this stanza appears on
-                    stanza_pair["folios"] = list(
-                        stanza_folios.values_list("folio_number", flat=True)
-                    )
+                    stanza_pair["folios"] = [f.folio_number for f in stanza_folios]
 
             paired_books[book_number].append(stanza_pair)
 
@@ -839,34 +884,6 @@ def manuscript(request: HttpRequest, siglum: str):
     )
 
 
-# def manuscript(request: HttpRequest, siglum: str):
-#     get_manuscript = get_object_or_404(SingleManuscript, siglum=siglum)
-#     folios = get_manuscript.folio_set.prefetch_related("locations_mentioned").all()
-#
-#     # Fetch related LocationAlias objects for each location mentioned in the folios
-#     for folio in folios:
-#         for location in folio.locations_mentioned.all():
-#             alias = (
-#                 LocationAlias.objects.filter(location=location)
-#                 .values(
-#                     "placename_modern",
-#                     "placename_from_mss",
-#                 )
-#                 .first()
-#             )
-#             location.alias = alias
-#
-#     return render(
-#         request,
-#         "manuscript_single.html",
-#         {
-#             "manuscript": get_manuscript,
-#             "folios": folios,
-#             "iiif_manifest": get_manuscript.iiif_url,
-#         },
-#     )
-
-
 # Add this utility function to generate toponym slugs consistently
 def get_toponym_slug(toponym_name):
     """Generate a slug from a toponym name"""
@@ -920,33 +937,16 @@ def toponyms(request: HttpRequest):
     """View for displaying all toponyms with proper slugs"""
     # Get unique and sorted Location objects
     toponym_objects = (
-        Location.objects.exclude(placename_id=None)
+        Location.objects.exclude(placename_id__isnull=True)
         .exclude(placename_id="")
-        .exclude(
-            Q(name="") | Q(name__isnull=True)
-        )  # Exclude locations with empty names
-        .values("name", "placename_id", "id")
-        .distinct()
+        .exclude(name__isnull=True)
+        .exclude(name="")
         .order_by("name")
+        .distinct("name", "placename_id")
     )
 
-    # Add slug to each object and ensure it's not empty
-    toponyms_with_slugs = []
-    for obj in toponym_objects:
-        if obj["name"]:  # Double check name is not empty
-            slug = slugify(obj["name"])
-            if not slug:
-                # Generate a fallback slug
-                if obj["placename_id"]:
-                    slug = slugify(obj["placename_id"])
-                else:
-                    slug = f"toponym-{obj['id']}"
-
-            obj["slug"] = slug
-            toponyms_with_slugs.append(obj)
-
     return render(
-        request, "gazetteer/gazetteer_index.html", {"aliases": toponyms_with_slugs}
+        request, "gazetteer/gazetteer_index.html", {"locations": toponym_objects}
     )
 
 
@@ -1036,25 +1036,27 @@ def toponym(request: HttpRequest, placename_id: str):
 
 
 def search_toponyms(request):
-    query = request.GET.get("q", "")
-    try:
-        if query:
-            alias_results = LocationAlias.objects.filter(
-                Q(placename_modern__icontains=query)
-                | Q(placename_ancient__icontains=query)
-                | Q(placename_from_mss__icontains=query)
-                | Q(
-                    location__name__icontains=query
-                )  # Follow the relationship to Location's name field
-            ).distinct()
-        else:
-            alias_results = LocationAlias.objects.all()
-        return render(
-            request, "gazetteer/gazetteer_results.html", {"aliases": alias_results}
+    """Given a search qury, return Location objects, based on
+    Location name and associated LocationAlias placenames."""
+    query = request.GET.get("q", "").strip()
+    locations = Location.objects.all()
+    if query:
+        # use subquery with EXISTS on LocationAlias names for efficiency (no JOIN)
+        alias_subquery = LocationAlias.objects.filter(
+            # ensure we only return related Locations
+            location=OuterRef("pk")
+        ).filter(
+            Q(placename_modern__icontains=query)
+            | Q(placename_ancient__icontains=query)
+            | Q(placename_from_mss__icontains=query)
+            | Q(placename_alias__icontains=query)
         )
-    except Exception as e:
-        logger.error("Error in search_toponyms: %s", e)
-        return JsonResponse({"error": str(e)}, status=500)
+        locations = locations.filter(Q(name__icontains=query) | Exists(alias_subquery))
+
+    # sort so it matches "all locations" queryset
+    locations = locations.order_by("name")
+
+    return render(request, "gazetteer/gazetteer_results.html", {"locations": locations})
 
 
 class ToponymViewSet(viewsets.ReadOnlyModelViewSet):

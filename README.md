@@ -41,6 +41,7 @@ A Django-based digital humanities application for analyzing and presenting manus
    poetry install
    poetry shell
    ```
+   > Note: In Poetry version 2+, it is required to install the [shell plugin](https://github.com/python-poetry/poetry-plugin-shell) before using `poetry shell`.
 
 3. Set up environment variables:
    ```bash
@@ -63,8 +64,12 @@ A Django-based digital humanities application for analyzing and presenting manus
    python manage.py runserver
    ```
 
-7. In another terminal, start Tailwind CSS watcher:
+7. In another terminal, install NPM dependencies and start Tailwind CSS watcher:
    ```bash
+   npm install
+   cd theme/static_src
+   npm install
+   cd ../..
    python manage.py tailwind start
    ```
 

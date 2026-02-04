@@ -6,7 +6,7 @@
         <div class="flex justify-between h-16">
             <div class="flex items-center">
                 <a href="/" class="flex items-center space-x-3">
-                    <img src="/static/images/logo.png" alt="Logo" class="h-10">
+                    <img src="{% static 'images/logo.png' %}" alt="Logo" class="h-10">
                     <span class="text-xl">The La Sfera Project</span>
                 </a>
             </div>
@@ -47,6 +47,7 @@
                 </div>
 
                 <a href="/about/" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
+                <a href="{% slugurl 'introduction' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Introduction</a>
             </div>
 
             <!-- Mobile menu button -->

@@ -87,7 +87,7 @@
                 <!-- Thumbnail -->
                 <div class="flex-shrink-0">
                     <img 
-                        src="{% if item.thumbnail %}{{ item.thumbnail }}{% else %}/static/images/home/wellcome230_p44.webp{% endif %}" 
+                        src="{% if item.thumbnail %}{{ item.thumbnail }}{% else %}{% static 'images/home/wellcome230_p44.webp' %}{% endif %}" 
                         alt="{{ item.name }} thumbnail"
                         class="w-20 h-20 object-cover rounded-lg"
                     >

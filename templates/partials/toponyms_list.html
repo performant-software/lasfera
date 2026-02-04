@@ -1,0 +1,7 @@
+<ul>
+    {% for location in locations %}
+        <li class="p-2 hover:bg-gray-100">
+            <a class="underline hover:no-underline" href="{% url 'toponym_detail' location.slug %}">{{ location.name }}</a>
+        </li>
+    {% endfor %}
+</ul>

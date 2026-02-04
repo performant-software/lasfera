@@ -1,0 +1,26 @@
+<div class="mb-6 bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-lg shadow-sm border border-gray-200">
+    <h4 class="text-lg font-medium mb-4">
+        The toponym <strong><span>{{ aggregated_aliases.name }}</span></strong>
+        is mentioned in <em>La Sfera</em> on the following line codes:
+    </h4>
+    {% if line_codes %}
+        <div class="flex flex-wrap gap-3 mt-4">
+            {% for line_code in line_codes %}
+                <a href="/manuscripts/Urb1/stanzas/#{{ line_code.line_code }}" 
+                class="group inline-flex items-center px-3 py-2 bg-white border border-gray-300 rounded-md hover:bg-blue-50 hover:border-blue-300 hover:shadow-md transition-all">
+                    <span class="font-mono text-gray-800 group-hover:text-blue-700">{{ line_code.line_code }}</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1.5 text-gray-400 group-hover:text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="bg-white rounded border border-gray-200 text-center">
+            <span class="text-gray-500 italic">No line codes available for this toponym.</span>
+        </div>
+    {% endif %}
+    <div class="mt-4 text-sm text-gray-600">
+        <p>Click on any line code to view it in context within the text.</p>
+    </div>
+</div>

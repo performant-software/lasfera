@@ -8,7 +8,7 @@ class ToponymSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Location
-        fields = ["id", "modern_country", "latitude", "longitude", "aliases"]
+        fields = ["id", "name", "slug", "modern_country", "latitude", "longitude", "aliases"]
 
     def get_aliases(self, obj):
         aliases = (

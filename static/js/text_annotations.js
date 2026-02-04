@@ -2,7 +2,30 @@
 document.addEventListener("DOMContentLoaded", function() {
     // First add the styles to document head in admin view
     addStyles();
-    
+
+    // prepare to warn user if they try to change stanza_text
+    const stanzaTextInput = document.querySelector('#id_stanza_text');
+    if (stanzaTextInput) {
+        // Store the original value to compare later
+        const originalText = stanzaTextInput.value;
+        const form = document.querySelector('#stanza_form, #stanzatranslated_form');
+        form.addEventListener('submit', function (e) {
+            // If text has changed and there are inlines present
+            const hasInlines =
+                document.querySelectorAll('.inline-related .form-row:not(.empty-form)').length >
+                0;
+            if (stanzaTextInput.value !== originalText && hasInlines) {
+                const msg =
+                'Warning: You have modified the Stanza Text. ' +
+                'This may cause existing annotations to become unlinked or shift position. ' +
+                '\n\nAre you sure you want to proceed?';
+                if (!confirm(msg)) {
+                    e.preventDefault(); // Stop the save
+                }
+            }
+        });
+    }
+
     // Initialize the annotation system only after Trix is ready
     if (typeof Trix !== 'undefined') {
         initializeAnnotationSystem();
@@ -31,8 +54,9 @@ function addStyles() {
             background: white;
             padding: 20px;
             border-radius: 8px;
-            width: 400px;
+            width: 450px;
             max-width: 90%;
+            max-height: 90vh;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
         
@@ -41,29 +65,30 @@ function addStyles() {
             font-size: 18px;
         }
         
-        .annotation-modal textarea {
+        .annotation-modal textarea,
+        .annotation-modal input[type="text"],
+        .annotation-modal select {
             width: 100%;
-            min-height: 100px;
             margin: 10px 0;
-            padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-family: inherit;
+            box-sizing: border-box;
         }
-        
-        .annotation-modal select {
-            width: 100%;
+
+        .annotation-modal textarea {
+            min-height: 80px;
+            resize: vertical;
             padding: 8px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 4px;
         }
-        
+
         .annotation-modal-buttons {
             display: flex;
             justify-content: flex-end;
             gap: 10px;
             margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
         }
         
         .annotation-modal button {
@@ -90,58 +115,70 @@ function addStyles() {
             border-radius: 4px;
             margin-bottom: 10px;
             border: 1px solid #dee2e6;
+            font-style: italic;
+        }
+
+        .variant-fields {
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .variant-flex {
+            display: flex;
+            gap: 10px;
+        }
+
+        .variant-flex div {
+            flex: 1;
+        }
+
+        .hidden {
+            display: none !important;
         }
     `;
     document.head.appendChild(modalStyle);
+
+    // Add annotation button icon styles
+    const iconStyle = document.createElement('style');
+    iconStyle.id = 'annotation-styles';
+    iconStyle.textContent = `
+        .trix-button--icon-note::before {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>');
+        }
+    `;
+    document.head.appendChild(iconStyle);
 }
 
 function initializeAnnotationSystem() {
     // Wait for Trix editor to be initialized
-    document.addEventListener('trix-initialize', function() {
-        const toolbar = document.querySelector('trix-toolbar .trix-button-row');
-        if (!toolbar) {
+    document.addEventListener('formset:added', () => {
+        // target the toolbar for the stanza_text field's rich text editor
+        const toolbar = document.querySelector('.field-stanza_text trix-toolbar .trix-button-row');
+        if (toolbar && !toolbar.querySelector('[data-trix-action="addAnnotation"]')) {
+            addAnnotationButton(toolbar);
+        } else if (!toolbar) {
             console.error('Trix toolbar not found');
             return;
         }
-
-        // Check if we've already added the button
-        if (toolbar.querySelector('.trix-button--icon-note')) {
-            return;
-        }
-
-        addAnnotationButton(toolbar);
     });
-
-    // Initialize existing annotations
-    loadExistingAnnotations();
 }
 
 function addAnnotationButton(toolbar) {
     const annotationGroup = document.createElement('span');
     annotationGroup.className = 'trix-button-group';
     annotationGroup.setAttribute('data-trix-button-group', 'annotation-tools');
-    
+
     const annotateButton = document.createElement('button');
     annotateButton.type = 'button';
     annotateButton.className = 'trix-button trix-button--icon trix-button--icon-note';
     annotateButton.setAttribute('data-trix-action', 'addAnnotation');
-    annotateButton.title = 'Add Note';
-    
-    // Add note icon styles
-    if (!document.querySelector('#annotation-styles')) {
-        const iconStyle = document.createElement('style');
-        iconStyle.id = 'annotation-styles';
-        iconStyle.textContent = `
-            .trix-button--icon-note::before {
-                background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>');
-            }
-        `;
-        document.head.appendChild(iconStyle);
-    }
-    
+    annotateButton.title = 'Add Annotation';
+
     annotationGroup.appendChild(annotateButton);
     toolbar.appendChild(annotationGroup);
-    
+
     // Add click handler
     annotateButton.addEventListener('click', handleAnnotationClick);
 }
@@ -174,6 +211,54 @@ function getStanzaId() {
     return null;
 }
 
+function getAvailableAnnotationTypes() {
+    // pull annotation types currently being added to populate list of options
+    const types = [
+        {
+            selector: '.inline-group[id*="editorialnote"]',
+            value: 'note',
+            label: 'Editorial Note',
+        },
+        {
+            selector: '.inline-group[id*="textualvariant"]',
+            value: 'variant',
+            label: 'Textual Variant',
+        },
+        {
+            selector: '.inline-group[id*="crossreference"]',
+            value: 'reference',
+            label: 'Cross Reference',
+        },
+    ];
+
+    return types
+        .filter(({ selector }) => {
+            const inline = document.querySelector(selector);
+            if (!inline) return false;
+
+            // limit to only those being newly added
+            return Array.from(inline.querySelectorAll('.form-row:not(.empty-form)')).some(row => {
+                const idInput = row.querySelector('input[type="hidden"][name$="-id"]');
+                const isNew = idInput && !idInput.value;
+                return isNew;
+            });
+        })
+        .map(({ value, label }) => ({ value, label }));
+}
+
+function getManuscriptOptions() {
+    // get manuscript labels and values from the TextualVariant formset:
+    // look for any select input ending in '-manuscript' within the admin form
+    const sourceSelect = document.querySelector('select[name$="-manuscript"]');
+
+    if (!sourceSelect) {
+        return '<option value="">-- Manual Entry Required --</option>';
+    }
+
+    // return the innerHTML (the <options>) directly
+    return sourceSelect.innerHTML;
+}
+
 function handleAnnotationClick(event) {
     event.preventDefault();
 
@@ -184,6 +269,19 @@ function handleAnnotationClick(event) {
         alert("Please select some text to annotate");
         return;
     }
+
+    const availableTypes = getAvailableAnnotationTypes();
+
+    if (availableTypes.length === 0) {
+        alert("No annotations currently being added. Click 'Add another' at the bottom of the list of the annotation type you want to add.");
+        return;
+    }
+    const optionsHtml = availableTypes.map(t => 
+        `<option value="${t.value}">${t.label}</option>`
+    ).join('');
+    const isVariantSelected = availableTypes.length === 1 && availableTypes[0].value === 'variant';
+    const variantDisplayClass = isVariantSelected ? '' : 'hidden';
+    const manuscriptOptions = getManuscriptOptions();
 
     const selectedText = editor.getDocument().getStringAtRange(selectedRange);
     const stanzaId = getStanzaId();
@@ -202,15 +300,41 @@ function handleAnnotationClick(event) {
             <div class="selected-text-preview">
                 Selected text: <strong>${selectedText}</strong>
             </div>
+            <label for="annotation-type">Annotation Type</label>
+            <select id="annotation-type" ${availableTypes.length === 1 ? 'disabled' : ''}>
+                ${optionsHtml}
+            </select>
+            <label for="annotation-text" id="main-text-label">Annotation Content</label>
             <textarea id="annotation-text" 
                 placeholder="Enter your annotation..."
                 autofocus></textarea>
-            <select id="annotation-type">
-                <option value="note">Editorial Note</option>
-                <option value="translation">Translation</option>
-                <option value="variant">Textual Variant</option>
-                <option value="reference">Cross Reference</option>
-            </select>
+            <div id="variant-fields-container" class="variant-fields ${variantDisplayClass}">
+                <label for="variant-manuscript">Manuscript (Siglum)</label>
+                <select id="variant-manuscript">
+                    ${manuscriptOptions}
+                </select>
+                
+                <label for="variant-significance">Significance</label>
+                <select id="variant-significance">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                </select>
+
+                <div class="variant-flex">
+                    <div>
+                        <label for="variant-id">Variant ID</label>
+                        <input type="text" id="variant-id" placeholder="e.g. T00035">
+                    </div>
+                    <div>
+                        <label for="variant-editor">Editor Initials</label>
+                        <input type="text" id="variant-editor" placeholder="e.g. LI">
+                    </div>
+                </div>
+                <label for="variant-notes">Notes</label>
+                <textarea id="variant-notes"></textarea>
+            </div>
             <div class="annotation-modal-buttons">
                 <button type="button" class="btn-cancel">Cancel</button>
                 <button type="button" class="btn-save">Save</button>
@@ -219,10 +343,29 @@ function handleAnnotationClick(event) {
     `;
 
     document.body.appendChild(modal);
+    const typeSelect = modal.querySelector("#annotation-type");
+    const variantContainer = modal.querySelector("#variant-fields-container");
+    const mainTextLabel = modal.querySelector("#main-text-label");
+    const textarea = modal.querySelector("#annotation-text");
+
+    // Toggle fields logic
+    function updateFieldVisibility() {
+        const type = typeSelect.value;
+        if (type === 'variant') {
+            variantContainer.classList.remove('hidden');
+            mainTextLabel.textContent = "Variant text";
+            textarea.placeholder = "Enter the variant text here...";
+        } else {
+            variantContainer.classList.add('hidden');
+            mainTextLabel.textContent = "Annotation content";
+            textarea.placeholder = "Enter your annotation...";
+        }
+    }
+    typeSelect.addEventListener('change', updateFieldVisibility);
+    updateFieldVisibility();
 
     // Focus the textarea
     setTimeout(() => {
-        const textarea = modal.querySelector("#annotation-text");
         if (textarea) {
             textarea.focus();
         }
@@ -237,7 +380,7 @@ function handleAnnotationClick(event) {
         const annotationText = modal.querySelector("#annotation-text").value;
         const annotationType = modal.querySelector("#annotation-type").value;
 
-        if (!annotationText.trim()) {
+        if (!annotationText.trim() && annotationType !== 'variant') {
             alert("Please enter an annotation");
             return;
         }
@@ -262,6 +405,13 @@ function handleAnnotationClick(event) {
         formData.append("from_pos", selectedRange[0]);
         formData.append("to_pos", selectedRange[1]);
         formData.append("csrfmiddlewaretoken", csrfToken);
+        if (annotationType === 'variant') {
+            formData.append("manuscript_id", modal.querySelector("#variant-manuscript").value);
+            formData.append("significance", modal.querySelector("#variant-significance").value);
+            formData.append("variant_id", modal.querySelector("#variant-id").value);
+            formData.append("editor_initials", modal.querySelector("#variant-editor").value);
+            formData.append("notes", modal.querySelector("#variant-notes").value);
+        }
 
         // Add loading state to save button
         const saveButton = modal.querySelector(".btn-save");
@@ -284,15 +434,6 @@ function handleAnnotationClick(event) {
             if (status === 200 && data.success) {
                 // Create the annotated span with proper attributes and styling
                 editor.setSelectedRange(selectedRange);
-                const annotatedSpan = `
-                    <span 
-                        class="annotated-text" 
-                        data-annotation-id="${data.annotation_id}" 
-                        data-annotation="${annotationText}"
-                        data-annotation-type="${annotationType}"
-                    >${selectedText}</span>
-                `;
-                editor.insertHTML(annotatedSpan);
 
                 // Close the modal
                 modal.remove();
@@ -313,14 +454,6 @@ function handleAnnotationClick(event) {
                 `;
                 document.body.appendChild(successMessage);
                 setTimeout(() => successMessage.remove(), 3000);
-
-                // Add hover listener for the newly created annotation
-                const newAnnotation = editor.element.querySelector(
-                    `[data-annotation-id="${data.annotation_id}"]`
-                );
-                if (newAnnotation) {
-                    addAnnotationHoverListener(newAnnotation, annotationType, annotationText);
-                }
             } else {
                 throw new Error(data.error || "Failed to save annotation");
             }
@@ -332,67 +465,4 @@ function handleAnnotationClick(event) {
             alert("Failed to save annotation. Please try again.");
         });
     });
-}
-
-function addAnnotationHoverListener(element, type, text) {
-    element.addEventListener("mouseenter", function(e) {
-        const tooltip = document.createElement("div");
-        tooltip.className = "annotation-tooltip";
-        tooltip.innerHTML = `
-            <strong>${type}:</strong><br>
-            ${text}
-        `;
-        tooltip.style.cssText = `
-            position: absolute;
-            background: #333;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 14px;
-            z-index: 1000;
-            max-width: 300px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        `;
-
-        const rect = element.getBoundingClientRect();
-        tooltip.style.left = `${rect.left}px`;
-        tooltip.style.top = `${rect.top - tooltip.offsetHeight - 8}px`;
-
-        document.body.appendChild(tooltip);
-
-        element.addEventListener("mouseleave", function() {
-            tooltip.remove();
-        }, { once: true });
-    });
-}
-
-function loadExistingAnnotations() {
-    const stanzaId = getStanzaId();
-    if (!stanzaId) return;
-
-    fetch(`/text-annotations/get/${stanzaId}/`)
-        .then(response => response.json())
-        .then(annotations => {
-            annotations.forEach(annotation => {
-                // Find the text node containing this annotation
-                const editor = document.querySelector("trix-editor").editor;
-                const content = editor.getDocument().toString();
-                const index = content.indexOf(annotation.selected_text);
-
-                if (index !== -1) {
-                    const range = [index, index + annotation.selected_text.length];
-                    editor.setSelectedRange(range);
-                    const annotatedSpan = `
-                        <span 
-                            class="annotated-text" 
-                            data-annotation-id="${annotation.id}" 
-                            data-annotation="${annotation.annotation}"
-                            data-annotation-type="${annotation.annotation_type}"
-                        >${annotation.selected_text}</span>
-                    `;
-                    editor.insertHTML(annotatedSpan);
-                }
-            });
-        })
-        .catch(error => console.error("Error loading annotations:", error));
 }

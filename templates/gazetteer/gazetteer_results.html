@@ -1,11 +1,5 @@
-{% if aliases %}
-    <ul>
-        {% for alias in aliases %}
-            <li class="p-2 hover:bg-gray-100">
-                <a class="underline hover:no-underline" href="{% url 'toponym_detail' alias.location_id %}">{{ alias.placename_modern }}</a>
-            </li>
-        {% endfor %}
-    </ul>
+{% if locations %}
+    {% include "partials/toponyms_list.html" with locations=locations %}
 {% else %}
     <p class="text-base">No toponyms found.</p>
 {% endif %}
