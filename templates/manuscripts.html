@@ -1,43 +1,42 @@
 {% extends "base.html" %}
 {% load static %}
-{% load stanza_tags %}
+{% load stanza_tags wagtailcore_tags %}
 
 {% block title %}Manuscript Traditions - La Sfera{% endblock title %}
 
 {% block content %}
-    <div class="mx-auto container pt-3">
+  <div class="mx-auto container pt-3">
     <section class="w-full p-4 my-10">
-        <!-- Title -->
-        <h3 class="text-4xl mb-8 font-bold" id="top">
-            {{ snippet.title|default:"Manuscripts" }}
-        </h3>
-        <div class="prose mb-8">
-            {% if snippet.body %}
-                {{ snippet.body|safe }}
-            {% else %}
-                <p>
-                    This is an index of all of the manuscripts catalogued by the project
-                    that contain <em>La sfera</em>, with links to metadata and digitized
-                    materials.
-                </p>
-            {% endif %}
-        </div>
-        <ul>
+      <!-- Title -->
+      <h3 class="text-4xl mb-8 font-bold" id="top">
+        {{ snippet.title|default:"Manuscripts" }}
+      </h3>
+      <div class="prose mb-8">
+        {% if snippet.body %}
+          {{ snippet.body|richtext }}
+        {% else %}
+          <p>
+            This is an index of all of the manuscripts catalogued by the project
+            that contain <em>La sfera</em>, with links to metadata and digitized
+            materials.
+          </p>
+        {% endif %}
+      </div>
+      <ul>
         {% for manuscript in manuscripts %}
-            <li>
-                {% if manuscript.siglum %}
-                    <a class="underline hover:no-underline" href="{% url 'manuscript' manuscript.siglum %}">
-                        {{ manuscript.shelfmark_fmt|default:manuscript.siglum }}
-                    </a>
-                {% else %}
-                    {{ manuscript.shelfmark_fmt|default:manuscript.siglum }}
-                {% endif %}
-            </li>
+          <li>
+            {% if manuscript.siglum %}
+              <a class="underline hover:no-underline" href="{% url 'manuscript' manuscript.siglum %}">
+                {{ manuscript.shelfmark_fmt|default:manuscript.siglum }}
+              </a>
+            {% else %}
+              {{ manuscript.shelfmark_fmt|default:manuscript.siglum }}
+            {% endif %}
+          </li>
         {% endfor %}
-        </ul>
-        </div>
+      </ul>
     </section>
-</div>
+  </div>
 {% endblock content %}
 
 {% block scripts %}

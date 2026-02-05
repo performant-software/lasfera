@@ -6,9 +6,9 @@
     <h1 class="text-3xl font-bold mb-6">{{ page.title }}</h1>
     
     {% if page.intro %}
-    <div class="mb-8">{{ page.intro|richtext }}</div>
+        <div class="mb-8">{{ page.intro|richtext }}</div>
     {% endif %}
-    
+
     <!-- Theme filter with Alpine.js and HTMX -->
     <div class="mb-8" x-data="{ selectedTheme: '{{ current_theme|default:"" }}' }">
         <h2 class="text-xl font-semibold mb-3">Filter by Theme</h2>
@@ -63,5 +63,10 @@
     <div id="gallery-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {% include "gallery/partials/gallery_grid.html" with gallery_pages=gallery_pages %}
     </div>
+
+    <p class="prose my-8">
+        Need to submit a takedown request for content posted here?
+        See our <a class="underline hover:no-underline" href="{% url 'dmca' %}">DMCA policy.</a>
+    </p>
 </div>
 {% endblock %}
