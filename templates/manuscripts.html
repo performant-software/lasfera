@@ -11,15 +11,17 @@
         <h3 class="text-4xl mb-8 font-bold" id="top">
             {{ snippet.title|default:"Manuscripts" }}
         </h3>
-        <p class="prose mb-8">
+        <div class="prose mb-8">
             {% if snippet.body %}
                 {{ snippet.body|safe }}
             {% else %}
-                This is an index of all of the manuscripts catalogued by the project
-                that contain <em>La sfera</em>, with links to metadata and digitized
-                materials.
+                <p>
+                    This is an index of all of the manuscripts catalogued by the project
+                    that contain <em>La sfera</em>, with links to metadata and digitized
+                    materials.
+                </p>
             {% endif %}
-        </p>
+        </div>
         <ul>
         {% for manuscript in manuscripts %}
             <li>
