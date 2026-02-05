@@ -719,6 +719,10 @@ def manuscript(request: HttpRequest, siglum: str):
     get_manuscript = get_object_or_404(
         SingleManuscript.objects.select_related("library").prefetch_related(
             "codex_set", "textdecoration_set", "editorialstatus_set"
+        ).annotate(
+            has_variants=Exists(
+                TextualVariant.objects.filter(manuscript=OuterRef("pk"))
+            )
         ),
         siglum=siglum,
     )
