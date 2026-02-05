@@ -10,210 +10,216 @@
 
 {% block content %}
     <div class="flex justify-center mx-auto container">
-        <section id="manuscript" class="flex flex-col md:flex-row w-full p-4 my-10">
-          <div class="w-full md:w-2/5 p-2">
-    <h3 class="text-4xl pb-8 font-bold" id="text">
-      {{ manuscript.siglum }}
-    </h3>
-
-    <!-- Basic Information -->
-    <div class="mb-6 pb-6 border-b">
-        <div class="space-y-2">
-            <p><span class="font-medium">Library:</span> {{ manuscript.library.city }} - {{ manuscript.library.library }}</p>
-            <p><span class="font-medium">Shelfmark:</span> {{ manuscript.shelfmark }}</p>
-            {% if manuscript.provenance %}
-                <p><span class="font-medium">Provenance:</span> {{ manuscript.provenance|safe }}</p>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Access & Links -->
-    <div class="mb-6 pb-6 border-b">
-        <h4 class="text-xl font-semibold mb-3">Access & Digital Resources</h4>
-        <div class="space-y-2">
-          {% if manuscript.iiif_url %}
-    <p>IIIF Manifest
-        <button 
-            onclick="copyToClipboard(event, '{{ manuscript.iiif_url }}')" 
-            class="text-lasfera-black cursor-pointer inline-flex items-center"
-        >
-            <i class="fa-regular fa-copy ml-1"></i>
-            <span class="copy-feedback ml-2 text-lasfera-red hidden text-sm">URL copied!</span>
-        </button>
-    </p>
-{% endif %}
-            {% if manuscript.digitized_url %}
-                <p><span class="font-medium">Digital Facsimile:</span> 
-                    <a href="{{ manuscript.digitized_url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
-                        View <i class="fa-solid fa-up-right-from-square ml-1"></i>
-                    </a>
+        <section id="manuscript" class="flex flex-col md:flex-row w-full p-2 mb-10">
+            <div class="w-full md:w-2/5 p-2">
+                <p class="mb-6">
+                    &larr; <a class="underline hover:no-underline" href="{% url 'manuscripts' %}">Return to manuscripts</a>
                 </p>
-            {% endif %}
-            {% if manuscript.purl_url %}
-                <p><span class="font-medium">Permanent URL:</span> 
-                    <a href="{{ manuscript.purl_url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
-                        View <i class="fa-solid fa-up-right-from-square ml-1"></i>
-                    </a>
-                </p>
-            {% endif %}
-            {% if manuscript.gazetteer_url %}
-                <p><span class="font-medium">Gazetteer:</span> 
-                    <a href="{{ manuscript.gazetteer_url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
-                        View <i class="fa-solid fa-up-right-from-square ml-1"></i>
-                    </a>
-                </p>
-            {% endif %}
-            {% if manuscript.photographs %}
-                <p><span class="font-medium">Photographs:</span> 
-                    <a href="{{ manuscript.photographs.url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
-                        View <i class="fa-solid fa-up-right-from-square ml-1"></i>
-                    </a>
-                </p>
-            {% endif %}
-        </div>
-    </div>
+                <h3 class="text-4xl pb-8 font-bold" id="text">
+                    {{ manuscript.siglum }}
+                </h3>
+                <!-- Basic Information -->
+                <div class="mb-6 pb-6 border-b">
+                    <div class="space-y-2">
+                        <p><span class="font-medium">Library:</span> {{ manuscript.library.city }} - {{ manuscript.library.library }}</p>
+                        <p><span class="font-medium">Shelfmark:</span> {{ manuscript.shelfmark }}</p>
+                        {% if manuscript.provenance %}
+                            <p><span class="font-medium">Provenance:</span> {{ manuscript.provenance|safe }}</p>
+                        {% endif %}
+                    </div>
+                </div>
 
-    <!-- Codex Information -->
-    {% if manuscript.codex_set.exists %}
-    <div class="mb-6 pb-6 border-b">
-        <h4 class="text-xl font-semibold mb-3">Physical Description</h4>
-        <div class="space-y-2">
-            {% with codex=manuscript.codex_set.first %}
-                {% if codex.support %}
-                    <p><span class="font-medium">Support:</span> {{ codex.support }}</p>
+                <!-- Access & Links -->
+                {% if manuscript.iiif_url or manuscript.has_variants or manuscript.digitized_url or manuscript.purl_url or manuscript.gazetteer_url or manuscript.photographs %}
+                <div class="mb-6 pb-6 border-b">
+                    <h4 class="text-xl font-semibold mb-3">Access &amp; Digital Resources</h4>
+                    <div class="space-y-2">
+                        {% if manuscript.iiif_url or manuscript.has_variants %}
+                            <a href="{% url 'manuscript_stanzas' manuscript.siglum %}" class="group inline-flex items-center">
+                                <span class="text-blue-600 group-hover:underline">Navigate to edition view</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1.5 text-blue-600 group-hover:underline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                            </a>
+                        {% endif %}
+                        {% if manuscript.iiif_url %}
+                            <p>IIIF Manifest
+                                <button 
+                                    onclick="copyToClipboard(event, '{{ manuscript.iiif_url }}')" 
+                                    class="text-lasfera-black cursor-pointer inline-flex items-center"
+                                >
+                                    <i class="fa-regular fa-copy ml-1"></i>
+                                    <span class="copy-feedback ml-2 text-lasfera-red hidden text-sm">URL copied!</span>
+                                </button>
+                            </p>
+                        {% endif %}
+                        {% if manuscript.digitized_url %}
+                            <p><span class="font-medium">Digital Facsimile:</span> 
+                                <a href="{{ manuscript.digitized_url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                                    View <i class="fa-solid fa-up-right-from-square ml-1"></i>
+                                </a>
+                            </p>
+                        {% endif %}
+                        {% if manuscript.purl_url %}
+                            <p><span class="font-medium">Permanent URL:</span> 
+                                <a href="{{ manuscript.purl_url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                                    View <i class="fa-solid fa-up-right-from-square ml-1"></i>
+                                </a>
+                            </p>
+                        {% endif %}
+                        {% if manuscript.gazetteer_url %}
+                            <p><span class="font-medium">Gazetteer:</span> 
+                                <a href="{{ manuscript.gazetteer_url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                                    View <i class="fa-solid fa-up-right-from-square ml-1"></i>
+                                </a>
+                            </p>
+                        {% endif %}
+                        {% if manuscript.photographs %}
+                            <p><span class="font-medium">Photographs:</span> 
+                                <a href="{{ manuscript.photographs.url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                                    View <i class="fa-solid fa-up-right-from-square ml-1"></i>
+                                </a>
+                            </p>
+                        {% endif %}
+                    </div>
+                </div>
                 {% endif %}
-                {% if codex.height %}
-                    <p><span class="font-medium">Height:</span> {{ codex.height }} cm</p>
-                {% endif %}
-                {% if codex.date %}
-                    <p><span class="font-medium">Date:</span> {{ codex.date }}</p>
-                {% endif %}
-                {% if codex.folia %}
-                    <p><span class="font-medium">Folia:</span> {{ codex.folia }}</p>
-                {% endif %}
-                {% if codex.lines_per_page %}
-                    <p><span class="font-medium">Lines per page:</span> {{ codex.lines_per_page }}</p>
-                {% endif %}
-            {% endwith %}
-        </div>
-    </div>
-    {% endif %}
 
-    <!-- Decoration Information -->
-    {% if manuscript.textdecoration_set.exists %}
-    <div class="mb-6 pb-6 border-b">
-        <h4 class="text-xl font-semibold mb-3">Decoration</h4>
-        <div class="space-y-2">
-            {% with decoration=manuscript.textdecoration_set.first %}
-                {% if decoration.text_script %}
-                    <p><span class="font-medium">Text Script:</span> {{ decoration.text_script }}</p>
+                <!-- Codex Information -->
+                {% if manuscript.codex_set.exists %}
+                <div class="mb-6 pb-6 border-b">
+                    <h4 class="text-xl font-semibold mb-3">Physical Description</h4>
+                    <div class="space-y-2">
+                        {% with codex=manuscript.codex_set.first %}
+                            {% if codex.support %}
+                                <p><span class="font-medium">Support:</span> {{ codex.support }}</p>
+                            {% endif %}
+                            {% if codex.height %}
+                                <p><span class="font-medium">Height:</span> {{ codex.height }} cm</p>
+                            {% endif %}
+                            {% if codex.date %}
+                                <p><span class="font-medium">Date:</span> {{ codex.date }}</p>
+                            {% endif %}
+                            {% if codex.folia %}
+                                <p><span class="font-medium">Folia:</span> {{ codex.folia }}</p>
+                            {% endif %}
+                            {% if codex.lines_per_page %}
+                                <p><span class="font-medium">Lines per page:</span> {{ codex.lines_per_page }}</p>
+                            {% endif %}
+                        {% endwith %}
+                    </div>
+                </div>
                 {% endif %}
-                {% if decoration.label_script %}
-                    <p><span class="font-medium">Label Script:</span> {{ decoration.label_script }}</p>
-                {% endif %}
-                {% if decoration.diagrams %}
-                    <p><span class="font-medium">Diagrams:</span> {{ decoration.diagrams }}</p>
-                {% endif %}
-                {% if decoration.maps %}
-                    <p><span class="font-medium">Maps:</span> {{ decoration.maps }}</p>
-                {% endif %}
-                {% if decoration.illumination %}
-                    <p><span class="font-medium">Illumination:</span> {{ decoration.illumination }}</p>
-                {% endif %}
-                {% if decoration.white_vine_work %}
-                    <p><span class="font-medium">White Vine Work:</span> {{ decoration.white_vine_work }}</p>
-                {% endif %}
-                {% if decoration.relative_quality %}
-                    <p><span class="font-medium">Relative Quality:</span> {{ decoration.relative_quality }}</p>
-                {% endif %}
-                {% if decoration.other %}
-                    <p><span class="font-medium">Other Decoration:</span> {{ decoration.other }}</p>
-                {% endif %}
-            {% endwith %}
-        </div>
-    </div>
-    {% endif %}
 
-    <!-- Status Information -->
-    {% if manuscript.editorialstatus_set.exists %}
-    <div class="mb-6 pb-6 border-b">
-        <h4 class="text-xl font-semibold mb-3">Editorial Status</h4>
-        <div class="space-y-2">
-            {% with status=manuscript.editorialstatus_set.first %}
-                {% if status.editorial_priority %}
-                    <p><span class="font-medium">Editorial Priority:</span> {{ status.editorial_priority }}</p>
+                <!-- Decoration Information -->
+                {% if manuscript.textdecoration_set.exists %}
+                <div class="mb-6 pb-6 border-b">
+                    <h4 class="text-xl font-semibold mb-3">Decoration</h4>
+                    <div class="space-y-2">
+                        {% with decoration=manuscript.textdecoration_set.first %}
+                            {% if decoration.text_script %}
+                                <p><span class="font-medium">Text Script:</span> {{ decoration.text_script }}</p>
+                            {% endif %}
+                            {% if decoration.label_script %}
+                                <p><span class="font-medium">Label Script:</span> {{ decoration.label_script }}</p>
+                            {% endif %}
+                            {% if decoration.diagrams %}
+                                <p><span class="font-medium">Diagrams:</span> {{ decoration.diagrams }}</p>
+                            {% endif %}
+                            {% if decoration.maps %}
+                                <p><span class="font-medium">Maps:</span> {{ decoration.maps }}</p>
+                            {% endif %}
+                            {% if decoration.illumination %}
+                                <p><span class="font-medium">Illumination:</span> {{ decoration.illumination }}</p>
+                            {% endif %}
+                            {% if decoration.white_vine_work %}
+                                <p><span class="font-medium">White Vine Work:</span> {{ decoration.white_vine_work }}</p>
+                            {% endif %}
+                            {% if decoration.relative_quality %}
+                                <p><span class="font-medium">Relative Quality:</span> {{ decoration.relative_quality }}</p>
+                            {% endif %}
+                            {% if decoration.other %}
+                                <p><span class="font-medium">Other Decoration:</span> {{ decoration.other }}</p>
+                            {% endif %}
+                        {% endwith %}
+                    </div>
+                </div>
                 {% endif %}
-                {% if status.collated %}
-                    <p><span class="font-medium">Collated:</span> {{ status.collated }}</p>
-                {% endif %}
-                {% if status.spatial_priority %}
-                    <p><span class="font-medium">Spatial Priority:</span> {{ status.spatial_priority }}</p>
-                {% endif %}
-            {% endwith %}
-        </div>
-    </div>
-    {% endif %}
 
-    <!-- Manuscript Status -->
-    <div class="mb-6 pb-6 border-b">
-      <h4 class="text-xl font-semibold mb-3">Manuscript Status</h4>
-<div class="space-y-2">
-    <p class="{% if manuscript.manuscript_lost %}text-lasfera-yellow{% else %}text-lasfera-green{% endif %}">
-        <i class="fas {% if manuscript.manuscript_lost %}fa-exclamation-triangle{% else %}fa-check-circle{% endif %} mr-2"></i>
-        {% if manuscript.manuscript_lost %}
-            This manuscript is missing
-        {% else %}
-            This manuscript is not missing
-        {% endif %}
-    </p>
-    <p class="{% if manuscript.manuscript_destroyed %}text-lasfera red{% else %}text-lasfera-green{% endif %}">
-        <i class="fas {% if manuscript.manuscript_destroyed %}fa-exclamation-circle{% else %}fa-check-circle{% endif %} mr-2"></i>
-        {% if manuscript.manuscript_destroyed %}
-            This manuscript is destroyed
-        {% else %}
-            This manuscript is not destroyed
-        {% endif %}
-    </p>
-</div>
-    </div>
-         
-<h4 class="text-xl font-semibold pt-8">Toponyms in this Manuscript</h4>
-<div class="overflow-x-auto">
-  <h4 class="text-xl font-semibold pt-8">Toponyms in this Manuscript</h4>
-<div class="overflow-x-auto">
-    <table class="min-w-full table-auto mt-4">
-        <thead>
-            <tr class="bg-gray-100">
-                <th class="px-4 py-2 text-left">Folio</th>
-                <th class="px-4 py-2 text-left">Toponyms</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for folio in folios %}
-                {% if folio.related_locations %}
-                <tr class="border-t">
-                    <td class="px-4 py-2">{{ folio.folio_number }}</td>
-                    <td class="px-4 py-2">
-                      {% for rel in folio.related_locations %}
-                        <a href="{% url 'toponym_detail' rel.display_name|slugify %}" class="underline hover:no-underline">{{ rel.display_name }}</a>
-                      {% endfor %}
-                    </td>
-                </tr>
+                <!-- Status Information -->
+                {% if manuscript.editorialstatus_set.exists %}
+                <div class="mb-6 pb-6 border-b">
+                    <h4 class="text-xl font-semibold mb-3">Editorial Status</h4>
+                    <div class="space-y-2">
+                        {% with status=manuscript.editorialstatus_set.first %}
+                            {% if status.editorial_priority %}
+                                <p><span class="font-medium">Editorial Priority:</span> {{ status.editorial_priority }}</p>
+                            {% endif %}
+                            {% if status.collated %}
+                                <p><span class="font-medium">Collated:</span> {{ status.collated }}</p>
+                            {% endif %}
+                            {% if status.spatial_priority %}
+                                <p><span class="font-medium">Spatial Priority:</span> {{ status.spatial_priority }}</p>
+                            {% endif %}
+                        {% endwith %}
+                    </div>
+                </div>
                 {% endif %}
-            {% empty %}
-            <tr>
-                <td colspan="2" class="px-4 py-2 text-center">No folios with toponyms found</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-    </div>
 
+                <!-- Manuscript Status -->
+                <div class="mb-6 pb-6 border-b">
+                    <h4 class="text-xl font-semibold mb-3">Manuscript Status</h4>
+                    <div class="space-y-2">
+                        <p class="{% if manuscript.manuscript_lost %}text-lasfera-yellow{% else %}text-lasfera-green{% endif %}">
+                            <i class="fas {% if manuscript.manuscript_lost %}fa-exclamation-triangle{% else %}fa-check-circle{% endif %} mr-2"></i>
+                            {% if manuscript.manuscript_lost %}
+                                This manuscript is missing
+                            {% else %}
+                                This manuscript is not missing
+                            {% endif %}
+                        </p>
+                        <p class="{% if manuscript.manuscript_destroyed %}text-lasfera red{% else %}text-lasfera-green{% endif %}">
+                            <i class="fas {% if manuscript.manuscript_destroyed %}fa-exclamation-circle{% else %}fa-check-circle{% endif %} mr-2"></i>
+                            {% if manuscript.manuscript_destroyed %}
+                                This manuscript is destroyed
+                            {% else %}
+                                This manuscript is not destroyed
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
 
+                <h4 class="text-xl font-semibold pt-8">Toponyms in this Manuscript</h4>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full table-auto mt-4">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="px-4 py-2 text-left">Folio</th>
+                                <th class="px-4 py-2 text-left">Toponyms</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for folio in folios %}
+                                {% if folio.related_locations %}
+                                <tr class="border-t">
+                                    <td class="px-4 py-2">{{ folio.folio_number }}</td>
+                                    <td class="px-4 py-2">
+                                    {% for rel in folio.related_locations %}
+                                        <a href="{% url 'toponym_detail' rel.display_name|slugify %}" class="underline hover:no-underline">{{ rel.display_name }}</a>
+                                    {% endfor %}
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            {% empty %}
+                            <tr>
+                                <td colspan="2" class="px-4 py-2 text-center">No folios with toponyms found</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-
-            <div class="w-full md:w-3/5 p-2" id="viewer-wrapper">
+            <div class="w-full md:w-3/5 p-2 mt-12" id="viewer-wrapper">
                 {% if manuscript.iiif_url %}
                     <div id="tify-viewer" class="tify-container" style="width: 100%; height: 100vh;"></div>
                 {% elif manuscript.photographs %}
@@ -267,7 +273,7 @@
                 document.getElementById('pdf-viewer').outerHTML = `<embed src="${photograph}" type="application/pdf" width="100%" height="600px" />`;
             } else {
                 // Handle case where neither iiif_url nor photographs are provided
-                document.getElementById('viewer-wrapper').outerHTML = '<h3 class="text-lg">No IIIF manifest or photographs provided.</h3>';
+                document.getElementById('viewer-wrapper').innerHTML = '<h3 class="text-lg">No IIIF manifest or photographs provided.</h3>';
             }
         }
 
