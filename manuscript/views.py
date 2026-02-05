@@ -23,6 +23,7 @@ from rest_framework import viewsets
 from gallery.models import GalleryIndexPage
 from manuscript.models import (
     Folio,
+    Library,
     Location,
     LocationAlias,
     SingleManuscript,
@@ -31,7 +32,7 @@ from manuscript.models import (
     line_code_to_numeric,
 )
 from manuscript.serializers import SingleManuscriptSerializer, ToponymSerializer
-from pages.models import AboutPage, SitePage
+from pages.models import AboutPage, ManuscriptsIntroduction, SitePage
 from textannotation.models import CrossReference, EditorialNote, TextualVariant
 
 logger = logging.getLogger(__name__)
@@ -681,88 +682,35 @@ class ManuscriptViewer(DetailView):
 
 
 def manuscripts(request: HttpRequest):
-    """View for displaying all manuscripts with proper folio grouping"""
-    folios = Folio.objects.all()
-    stanzas = (
-        Stanza.objects.prefetch_related(
-            "folios", "editorial_notes", "cross_references", "textual_variants"
-        )
-        .all()
-        .order_by("stanza_line_code_starts")
+    """View for displaying all manuscripts as a list"""
+
+    # optimization: use values() and list
+    manuscripts = list(
+        SingleManuscript.objects.values("id", "shelfmark", "siglum", "library")
     )
+    libraries = Library.objects.values("id", "city", "library")
+    library_id_map = {library["id"]: library for library in libraries}
 
-    # Remove the translated stanzas
-    manuscripts = SingleManuscript.objects.all()
-    default_manuscript = SingleManuscript.objects.get(siglum="Urb1")
-
-    # Process stanzas into books structure (same as in stanzas view)
-    books = defaultdict(lambda: defaultdict(list))
-    for stanza in stanzas:
-        if stanza.stanza_line_code_starts:
-            parts = stanza.stanza_line_code_starts.split(".")
-            if len(parts) >= 2:
-                book_number = int(parts[0])
-                stanza_number = int(parts[1])
-
-                # Process text for display
-                if hasattr(stanza, "stanza_text"):
-                    stanza.unescaped_stanza_text = unescape(stanza.stanza_text)
-
-                books[book_number][stanza_number].append(stanza)
-
-    # Group stanzas by book and track folios - using same approach as stanzas view
-    paired_books = {}
-    for book_number, stanza_dict in sorted(books.items()):  # Sort by book number
-        paired_books[book_number] = []
-        current_folio = None
-
-        # Sort stanza numbers to ensure correct order
-        stanza_numbers = sorted(stanza_dict.keys())
-
-        for stanza_number in stanza_numbers:
-            original_stanzas = stanza_dict[stanza_number]
-
-            # Create a stanza pair dictionary with just original stanzas
-            stanza_pair = {
-                "original": original_stanzas,
-                "new_folio": False,
-            }
-
-            # Check if this is a new folio by looking at the first stanza's folios
-            if original_stanzas:
-                # Get the first stanza's folios ordered by folio_number
-                stanza_folios = sorted(
-                    original_stanzas[0].folios.all(), key=lambda f: f.folio_number
-                )
-
-                # If the stanza has any folios and the current folio has changed
-                if stanza_folios and (
-                    current_folio is None or stanza_folios[0] != current_folio
-                ):
-                    current_folio = stanza_folios[0]
-                    stanza_pair["new_folio"] = True
-                    # Add information about all folios this stanza appears on
-                    stanza_pair["folios"] = [f.folio_number for f in stanza_folios]
-
-            paired_books[book_number].append(stanza_pair)
-
-    manuscript_data = {
-        "iiif_url": (
-            default_manuscript.iiif_url
-            if hasattr(default_manuscript, "iiif_url")
-            else None
-        )
-    }
+    for manuscript in manuscripts:
+        library_id = manuscript["library"]
+        library = library_id_map.get(library_id)
+        if library:
+            # format as e.g. "Yale3 (New Haven, Yale, Beinecke 946)""
+            library_fmt = ", ".join(
+                [part for part in [library["city"], library["library"]] if part]
+            )
+            manuscript["shelfmark_fmt"] = "%s (%s, %s)" % (
+                manuscript["siglum"] or "[no siglum]",
+                library_fmt,
+                manuscript["shelfmark"],
+            )
 
     return render(
         request,
         "manuscripts.html",
         {
-            "stanza_pairs": paired_books,
             "manuscripts": manuscripts,
-            "default_manuscript": default_manuscript,
-            "manuscript": manuscript_data,
-            "folios": folios,
+            "snippet": ManuscriptsIntroduction.objects.first(),
         },
     )
 
