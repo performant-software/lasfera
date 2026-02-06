@@ -29,9 +29,9 @@ def annotate_text(html_content, annotations):
     sorted_annotations = sorted(
         annotations,
         key=lambda x: (
-            x.from_pos.get("offset", 0)
-            if isinstance(x.from_pos, dict)
-            else (x.from_pos or 0)
+            x["from_pos"].get("offset", 0)
+            if isinstance(x["from_pos"], dict)
+            else (x["from_pos"] or 0)
         ),
     )
 
@@ -40,7 +40,7 @@ def annotate_text(html_content, annotations):
 
     for annotation in sorted_annotations:
         # Find the actual text we're looking for
-        target_text = annotation.selected_text
+        target_text = annotation["selected_text"]
 
         # Find where this text appears in the inner HTML
         text_start = inner_html.find(target_text, last_pos)
@@ -54,14 +54,14 @@ def annotate_text(html_content, annotations):
             annotated_content = inner_html[text_start:text_end]
 
             # Determine the appropriate class based on annotation type
-            annotation_type = annotation.annotation_type.lower()
+            annotation_type = annotation["annotation_type"].lower()
             css_class = (
                 "textual-variant" if annotation_type == "variant" else "annotated-text"
             )
 
             result.append(
                 f'<span class="{css_class}" '
-                f'data-annotation-id="{annotation.id}" '
+                f'data-annotation-id="{annotation['id']}" '
                 f'data-annotation-type="{annotation_type}" '
                 f'onclick="showAnnotation(event, this)">'
                 f"{annotated_content}"

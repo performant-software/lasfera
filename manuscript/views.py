@@ -59,42 +59,58 @@ def manuscript_stanzas(request, siglum):
 
     # Get all folios for this manuscript
     folios = manuscript.folio_set.all().order_by("folio_number")
-    logger.info(f"Found {folios.count()} folios for manuscript {siglum}")
 
-    stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
-
-    # Prefetch for efficiency
-    stanzas = stanzas.prefetch_related(
-        "folios",
-        "editorial_notes",
-        "cross_references",
-        Prefetch(
-            "textual_variants",
-            queryset=TextualVariant.objects.filter(
-                manuscript=manuscript
-            ).select_related("manuscript"),
-        ),
+    stanzas_qs = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
+    stanzas = list(
+        stanzas_qs.values("id", "stanza_line_code_starts", "stanza_text", "is_rubric")
     )
-    logger.info(f"Found {stanzas.count()} total stanzas")
+    stanza_ct_id = ContentType.objects.get_for_model(Stanza).id
+
+    editorial_map = get_annotation_map(EditorialNote, stanzas_qs, stanza_ct_id, "note")
+    reference_map = get_annotation_map(
+        CrossReference, stanzas_qs, stanza_ct_id, "reference"
+    )
+    variant_map = get_annotation_map(
+        TextualVariant, stanzas_qs, stanza_ct_id, "variant", manuscript
+    )
+    for s in stanzas:
+        combined = (
+            editorial_map[s["id"]] + reference_map[s["id"]] + variant_map[s["id"]]
+        )
+        s["annotations"] = combined
 
     # Get translated stanzas for all stanzas
-    translated_stanzas = StanzaTranslated.objects.filter(stanza__in=stanzas).distinct()
-    translated_stanzas = translated_stanzas.prefetch_related(
-        "editorial_notes",
-        "cross_references",
-        Prefetch(
-            "textual_variants",
-            queryset=TextualVariant.objects.filter(
-                manuscript=manuscript
-            ).select_related("manuscript"),
-        ),
+    translated_stanzas = (
+        StanzaTranslated.objects.filter(stanza__in=stanzas_qs)
+        .distinct()
+        .values(
+            "id", "stanza_id", "stanza_text", "stanza_line_code_starts", "is_rubric"
+        )
     )
-    logger.info(f"Found {translated_stanzas.count()} translated stanzas")
+    translated_stanza_ids = [s["id"] for s in translated_stanzas]
+    translated_stanza_ct_id = ContentType.objects.get_for_model(StanzaTranslated).id
+    tr_editorial_map = get_annotation_map(
+        EditorialNote, translated_stanza_ids, translated_stanza_ct_id, "note"
+    )
+    tr_reference_map = get_annotation_map(
+        CrossReference, translated_stanza_ids, translated_stanza_ct_id, "reference"
+    )
+    tr_variant_map = get_annotation_map(
+        TextualVariant, translated_stanza_ids, translated_stanza_ct_id, "variant"
+    )
+    for s in translated_stanzas:
+        combined = (
+            tr_editorial_map[s["id"]]
+            + tr_reference_map[s["id"]]
+            + tr_variant_map[s["id"]]
+        )
+        s["annotations"] = combined
 
     # Process stanzas into books structure
-    books = process_stanzas(stanzas)
-    translated_books = process_stanzas(translated_stanzas, is_translated=True)
-    logger.info(f"Processed stanzas into {len(books)} books")
+    books = process_stanzas(stanzas, is_dict=True)
+    translated_books = process_stanzas(
+        translated_stanzas, is_translated=True, is_dict=True
+    )
 
     # Build paired books structure (will be sorted by book number)
     paired_books = {}
@@ -158,7 +174,7 @@ def manuscript_stanzas(request, siglum):
             if translated_stanza_group:
                 translated_stanza_group = sorted(
                     translated_stanza_group,
-                    key=lambda s: line_code_to_numeric(s.stanza_line_code_starts),
+                    key=lambda s: line_code_to_numeric(s["stanza_line_code_starts"]),
                 )
 
             # Create the stanza group - we'll show all stanzas for now
@@ -171,18 +187,15 @@ def manuscript_stanzas(request, siglum):
             # If we have a folio mapping, try to add folio information
             if has_folio_mapping and original_stanzas:
                 first_stanza = original_stanzas[0]
-                if first_stanza.stanza_line_code_starts:
+                if first_stanza["stanza_line_code_starts"]:
                     try:
                         stanza_code = line_code_to_numeric(
-                            first_stanza.stanza_line_code_starts
+                            first_stanza["stanza_line_code_starts"]
                         )
                         if stanza_code in line_code_to_folio:
                             matching_folio = line_code_to_folio[stanza_code]
 
                             # If this is a new folio, mark it in the stanza group
-                            existing_folio_ids = {
-                                f.id for f in first_stanza.folios.all()
-                            }
                             if current_folio is None or matching_folio != current_folio:
                                 current_folio = matching_folio
                                 stanza_group["new_folio"] = True
@@ -190,10 +203,6 @@ def manuscript_stanzas(request, siglum):
                                 logger.info(
                                     f"New folio for stanza {stanza_number}: {current_folio.folio_number}"
                                 )
-
-                                # Associate the stanza with this folio if not already done
-                                if matching_folio.id not in existing_folio_ids:
-                                    first_stanza.folios.add(matching_folio)
                     except Exception as e:
                         logger.warning(
                             f"Error determining folio for stanza {first_stanza.id}: {e}"
@@ -410,14 +419,18 @@ def get_annotation(request, annotation_type, annotation_id):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-def process_stanzas(stanzas, is_translated=False):
+def process_stanzas(stanzas, is_translated=False, is_dict=False):
     books = defaultdict(lambda: defaultdict(list))
     for stanza in stanzas:
-        book_number = int(stanza.stanza_line_code_starts.split(".")[0])
-        stanza_number = int(stanza.stanza_line_code_starts.split(".")[1])
-
-        if is_translated:
-            stanza.unescaped_stanza_text = unescape(stanza.stanza_text)
+        slcs = (
+            stanza["stanza_line_code_starts"]
+            if is_dict
+            else stanza.stanza_line_code_starts
+        )
+        book_number = int(slcs.split(".")[0])
+        stanza_number = int(slcs.split(".")[1])
+        if is_dict:
+            stanza["unescaped_stanza_text"] = unescape(stanza["stanza_text"])
         else:
             stanza.unescaped_stanza_text = unescape(stanza.stanza_text)
 
@@ -425,7 +438,7 @@ def process_stanzas(stanzas, is_translated=False):
 
         # Sort stanzas within each stanza number by line code for proper ordering
         books[book_number][stanza_number].sort(
-            key=lambda s: line_code_to_numeric(s.stanza_line_code_starts)
+            key=lambda s: line_code_to_numeric(s["stanza_line_code_starts"])
         )
 
     # Return books with keys sorted by book number
@@ -565,9 +578,9 @@ def manuscripts(request: HttpRequest):
 
 def manuscript(request: HttpRequest, siglum: str):
     get_manuscript = get_object_or_404(
-        SingleManuscript.objects.select_related("library").prefetch_related(
-            "codex_set", "textdecoration_set", "editorialstatus_set"
-        ).annotate(
+        SingleManuscript.objects.select_related("library")
+        .prefetch_related("codex_set", "textdecoration_set", "editorialstatus_set")
+        .annotate(
             has_variants=Exists(
                 TextualVariant.objects.filter(manuscript=OuterRef("pk"))
             )
