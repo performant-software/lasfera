@@ -59,9 +59,10 @@ def annotate_text(html_content, annotations):
                 "textual-variant" if annotation_type == "variant" else "annotated-text"
             )
 
+            annotation_id = annotation["id"]
             result.append(
                 f'<span class="{css_class}" '
-                f'data-annotation-id="{annotation['id']}" '
+                f'data-annotation-id="{annotation_id}" '
                 f'data-annotation-type="{annotation_type}" '
                 f'onclick="showAnnotation(event, this)">'
                 f"{annotated_content}"
