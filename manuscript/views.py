@@ -653,49 +653,53 @@ def manuscript(request: HttpRequest, siglum: str):
     )
 
 
-# Add this utility function to generate toponym slugs consistently
-def get_toponym_slug(toponym_name):
-    """Generate a slug from a toponym name"""
-    return slugify(toponym_name)
+def db_slug(field_name):
+    """Slugify a database lookup using only db functions"""
+    return Replace(Lower(field_name), Value(" "), Value("-"))
 
 
 def toponym_by_slug(request: HttpRequest, toponym_slug: str):
     """View a toponym by its slugified name"""
     # Try to find the toponym based on slugified name
-    location = None
+    search_term = toponym_slug.replace("-", " ")
 
     # First try to find by name
-    locations = Location.objects.all()
-    for loc in locations:
-        if slugify(loc.name) == toponym_slug:
-            location = loc
-            break
+    location = Location.objects.filter(name__iexact=search_term).first()
+    if not location:
+        location = (
+            Location.objects.annotate(
+                slug=Replace(Lower("name"), Value(" "), Value("-"))
+            )
+            .filter(slug=toponym_slug)
+            .first()
+        )
 
     # If not found by name, check aliases
-    if location is None:
-        aliases = LocationAlias.objects.all()
-        for alias in aliases:
+    if not location:
+        alias = (
             # Check all the possible name fields
-            name_fields = [
-                alias.placename_from_mss,
-                alias.placename_standardized,
-                alias.placename_modern,
-                alias.placename_alias,
-                alias.placename_ancient,
-            ]
+            LocationAlias.objects.annotate(
+                slug_mss=db_slug("placename_from_mss"),
+                slug_standardized=db_slug("placename_standardized"),
+                slug_modern=db_slug("placename_modern"),
+                slug_alias=db_slug("placename_alias"),
+                slug_ancient=db_slug("placename_ancient"),
+            )
+            .filter(
+                Q(slug_mss=toponym_slug)
+                | Q(slug_standardized=toponym_slug)
+                | Q(slug_moden=toponym_slug)
+                | Q(slug_alias=toponym_slug)
+                | Q(slug_ancient=toponym_slug)
+            )
+            .select_related("location")
+            .first()
+        )
+        if alias:
+            location = alias.location
 
-            for name in name_fields:
-                if name and slugify(name) == toponym_slug:
-                    location = alias.location
-                    break
-
-            if location:
-                break
-
-    if location is None:
+    if not location:
         # If still not found, return 404
-        from django.http import Http404
-
         raise Http404(f"No toponym found with slug: {toponym_slug}")
 
     # Redirect to existing view using placename_id
