@@ -17,35 +17,47 @@
 {% block content %}
     <div class="mx-auto container p-4 m-4">
         <p class="pb-2">&larr; <a class="underline hover:no-underline" href="{% url 'toponyms' %}">Return to gazetteer</a></p>
-        <h1 class="text-4xl my-4 font-bold" id="text">
+        <h1 class="text-4xl mt-4 mb-8 font-bold" id="text">
             <span class="border-b border-red-700 font-normal">{{ toponym.name }}</span>
         </h1>
 
         <section id="manuscript" class="flex flex-col md:flex-row w-full">
             <div class="flex flex-col md:flex-row w-full gap-x-8">
                 {# Left column: display toponym details #}
-                <div class="lg:w-1/2">
+                <div class="lg:w-1/2 space-y-4">
+                    {% include "partials/toponym_placenames.html" %}
                     {# description #}
                     {% if toponym.description %}
                         <div class="description py-4">
                             {{ toponym.description|safe }}
                         </div>
                     {% endif %}
-
+                    {% include "partials/toponym_coordinates.html" %}
+                    {# Additional metadata #}
+                    {% if toponym.authority_file %}
+                        <dl class="flex gap-1">
+                            <dt class="font-bold after:content-[':'] after:font-normal whitespace-nowrap shrink-0">Authority file</dt>
+                            <dd class="flex-1">
+                                <a class="underline hover:no-underline" href="{{ toponym.authority_file }}">
+                                    {{ toponym.authority_file }}
+                                </a>
+                            </dd>
+                        </dl>
+                    {% endif %}
+                    {# Line codes for the toponym #}
+                    {% include "partials/toponym_line_codes.html" %}
+                    {# Map content #}
+                    {% if toponym.latitude and toponym.longitude %}
+                        <div class="flex-auto mb-2">
+                            <div id="map" style="height: 255px; width: 100%">Map of the location {{ toponym }}</div>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="lg:w-1/2">
                     {# display the location aliases if any #}
                     {% include "partials/toponym_aliases_table.html" %}
                 </div>
                 {# Right column #}
-                <div class="lg:w-1/2 space-y-4">
-                    {# Line codes for the toponym #}
-                    {% include "partials/toponym_line_codes.html" %}
-                    {# Map content #}
-                    <div class="flex-auto mb-2">
-                        <div id="map" style="height: 255px; width: 100%">Map of the location {{ toponym }}</div>
-                    </div>
-                    {# Additional metadata #}
-                    {% include "partials/toponym_metadata.html" %}
-                </div>
             </div>
         </section>
     </div>
@@ -53,61 +65,34 @@
 
 {% block scripts %}
     <script>
-        fetch('/api/toponyms/{{ toponym.id }}')
-            .then(response => response.json())
-            .then(data => {
-                const latitude = data.latitude;
-                const longitude = data.longitude;
+    // Initialize the map on the "map" div with a given center and zoom
+    const latitude = {{ toponym.latitude }};
+    const longitude = {{ toponym.longitude }};
 
-            // Initialize the map on the "map" div with a given center and zoom
-                let map = L.map('map').setView([latitude, longitude], 6);
+    let map = L.map('map').setView([latitude, longitude], 6);
 
-            // Add an OpenStreetMap tile layer
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                    maxZoom: 20
-                }).addTo(map);
+    // Add an OpenStreetMap tile layer
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        maxZoom: 20
+    }).addTo(map);
 
-            // Add a marker at the given location
-                let marker = L.marker([latitude, longitude]).addTo(map);
+    // Add a marker at the given location
+    let marker = L.marker([latitude, longitude]).addTo(map);
 
-            })
-            .catch(error => console.error('Error fetching toponym data:', error));
-
-        
-    // Copy coordinates
-    document.addEventListener('DOMContentLoaded', () => {
-    const container = document.getElementById('coordinates-container');
-    const latitude = container.dataset.latitude;
-    const longitude = container.dataset.longitude;
-    const coordinates = `${latitude}, ${longitude}`;
-
-    container.innerHTML = `
-        <span>${coordinates}</span>
-        <button 
-            onclick="copyCoordinates('${coordinates}')"
-            class="ml-2 p-1 hover:bg-gray-100 rounded-full transition-colors"
-            title="Copy coordinates"
-        >
-            <i class="fa-regular fa-copy"></i>
-        </button>
-        <span id="copy-feedback" class="ml-2 text-green-600 text-sm hidden">Copied!</span>
-    `;
-});
-
-function copyCoordinates(coordinates) {
-    navigator.clipboard.writeText(coordinates).then(() => {
-        // Show feedback
-        const feedback = document.getElementById('copy-feedback');
-        feedback.classList.remove('hidden');
-        
-        // Hide feedback after 2 seconds
-        setTimeout(() => {
-            feedback.classList.add('hidden');
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy coordinates:', err);
-    });
-}
+    function copyCoordinates(coordinates) {
+        navigator.clipboard.writeText(coordinates).then(() => {
+            // Show feedback
+            const feedback = document.getElementById('copy-feedback');
+            feedback.classList.remove('hidden');
+            
+            // Hide feedback after 2 seconds
+            setTimeout(() => {
+                feedback.classList.add('hidden');
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy coordinates:', err);
+        });
+    }
     </script>
 {% endblock scripts %}

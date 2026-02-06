@@ -1,0 +1,18 @@
+{% if toponym.latitude and toponym.longitude %}
+    <dl>
+        <div class="flex items-center gap-1">
+            <dt class="font-bold after:content-[':'] after:font-normal whitespace-nowrap shrink-0">Coordinates</dt>
+            <dd class="flex-1">
+                <span>{{ toponym.latitude }}, {{ toponym.longitude }}</span>
+                <button 
+                    onclick="copyCoordinates('{{ toponym.latitude }}, {{ toponym.longitude }}')"
+                    class="ml-2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                    title="Copy coordinates"
+                >
+                    <i class="fa-regular fa-copy"></i>
+                </button>
+                <span id="copy-feedback" class="ml-2 text-green-600 text-sm hidden">Copied!</span>
+            </dd>
+        </div>
+    </dl>
+{% endif %}
