@@ -12,7 +12,6 @@ router.register(
 urlpatterns = [
     # Core pages
     path("", views.index, name="index"),
-    path("stanzas/", views.stanzas, name="stanzas"),
     # Manuscript routes
     path("manuscripts/", views.manuscripts, name="manuscripts"),
     path("manuscripts/<str:siglum>/", views.manuscript, name="manuscript"),
@@ -25,12 +24,6 @@ urlpatterns = [
     path("toponyms/", views.toponyms, name="toponyms"),
     path("toponyms/<slug:toponym_slug>/", views.toponym_by_slug, name="toponym_detail"),
     path("toponym-search/", views.search_toponyms, name="search_toponyms"),
-    # IIIF viewer
-    path(
-        "mirador/<str:manuscript_id>/<str:page_number>/",
-        views.mirador_view,
-        name="mirador_view",
-    ),
     # API and annotations
     path("api/", include(router.urls)),
     path("text-annotations/create/", views.create_annotation, name="create_annotation"),
