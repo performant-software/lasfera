@@ -72,22 +72,6 @@ function addVariantStyles() {
             margin-top: 8px;
             font-size: 0.85em;
         }
-        
-        /* Sidebar entry styling */
-        .variant-entry {
-            padding: 10px;
-            margin-bottom: 10px;
-            border-left: 3px solid #FF9800;
-            background-color: #FFF8E1;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .variant-entry:hover {
-            background-color: #FFE0B2;
-            transform: translateX(3px);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
     `;
     
     document.head.appendChild(style);
@@ -104,26 +88,6 @@ function initVariantAnnotations() {
             event.preventDefault();
             event.stopPropagation();
             showVariantPopup(event, this);
-        });
-        
-        // Highlight corresponding sidebar entry on hover
-        variant.addEventListener('mouseenter', function() {
-            const annotationId = this.dataset.annotationId;
-            const annotationType = this.dataset.annotationType;
-            const sidebarEntry = document.querySelector(`.variant-entry[data-annotation-id="${annotationId}"][data-annotation-type="${annotationType}"]`);            if (sidebarEntry) {
-                sidebarEntry.style.backgroundColor = '#FFCC80';
-                sidebarEntry.style.transform = 'translateX(3px)';
-            }
-        });
-        
-        variant.addEventListener('mouseleave', function() {
-            const annotationId = this.dataset.annotationId;
-            const annotationType = this.dataset.annotationType;
-            const sidebarEntry = document.querySelector(`.variant-entry[data-annotation-id="${annotationId}"][data-annotation-type="${annotationType}"]`);
-            if (sidebarEntry) {
-                sidebarEntry.style.backgroundColor = '#FFF8E1';
-                sidebarEntry.style.transform = 'translateX(0)';
-            }
         });
     });
 
@@ -185,16 +149,6 @@ function initVariantAnnotations() {
                 
                 // Reposition after content loaded
                 positionPopup(popup, element);
-                
-                // Highlight the corresponding sidebar entry
-                const sidebarEntry = document.querySelector(`.variant-entry[data-annotation-id="${annotationId}"]`);
-                if (sidebarEntry) {
-                    sidebarEntry.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    sidebarEntry.style.backgroundColor = '#FFCC80';
-                    setTimeout(() => {
-                        sidebarEntry.style.backgroundColor = '#FFF8E1';
-                    }, 1500);
-                }
             })
             .catch(error => {
                 console.error('Error loading annotation:', error);
@@ -257,33 +211,5 @@ function initVariantAnnotations() {
             activePopup.remove();
             activePopup = null;
         }
-    });
-    
-    // Sidebar entries interaction
-    const sidebarEntries = document.querySelectorAll('.variant-entry');
-    sidebarEntries.forEach(entry => {
-        entry.addEventListener('click', function() {
-            const annotationId = this.dataset.annotationId;
-            const textElement = document.querySelector(`.textual-variant[data-annotation-id="${annotationId}"]`);
-            
-            if (textElement) {
-                // Scroll to the element
-                textElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                
-                // Highlight effect
-                textElement.style.backgroundColor = '#FFA726';
-                setTimeout(() => {
-                    textElement.style.backgroundColor = '#FFE0B2';
-                }, 1500);
-                
-                // Trigger the popup
-                const clickEvent = new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                });
-                textElement.dispatchEvent(clickEvent);
-            }
-        });
     });
 }
