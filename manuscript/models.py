@@ -802,10 +802,11 @@ class Location(models.Model):
         help_text="Longitude in decimal degrees. If left blank, the system will attempt to geocode the location from the modern placename.",
     )
     authority_file = models.URLField(
+        "WHG link",
         max_length=255,
         blank=True,
         null=True,
-        help_text="The URL to the authority file for the location. If there isn't one, leave blank.",
+        help_text="The URL to the World Historical Gazetteer link for the location. If there isn't one, leave blank.",
     )
     place_type = models.CharField(max_length=255, blank=True, null=True)
 

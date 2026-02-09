@@ -38,16 +38,7 @@
                     {% endif %}
                     {% include "partials/toponym_coordinates.html" %}
                     {# Additional metadata #}
-                    {% if toponym.authority_file %}
-                        <dl class="flex gap-1">
-                            <dt class="font-bold after:content-[':'] after:font-normal whitespace-nowrap shrink-0">Authority file</dt>
-                            <dd class="flex-1">
-                                <a class="underline hover:no-underline" href="{{ toponym.authority_file }}">
-                                    {{ toponym.authority_file }}
-                                </a>
-                            </dd>
-                        </dl>
-                    {% endif %}
+                    {% include "partials/toponym_whg.html" %}
                     {# Line codes for the toponym #}
                     {% include "partials/toponym_line_codes.html" %}
                     {# Map content #}
