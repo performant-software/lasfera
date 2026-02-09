@@ -8,7 +8,7 @@ from html import unescape
 from django.urls import reverse
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.staticfiles import finders
-from django.db.models import Exists, OuterRef, Q, Value
+from django.db.models import Exists, Func, OuterRef, Q, Value
 from django.db.models.functions import Replace, Lower
 from django.http import Http404, HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -653,9 +653,19 @@ def manuscript(request: HttpRequest, siglum: str):
     )
 
 
+class RegexpReplace(Func):
+    """Custom function to allow regex replacement via postgres"""
+
+    function = "REGEXP_REPLACE"
+    template = "%(function)s(%(expressions)s, 'g')"  # 'g' for global replacement
+
+
 def db_slug(field_name):
     """Slugify a database lookup using only db functions"""
-    return Replace(Lower(field_name), Value(" "), Value("-"))
+    # Remove non-alphanumeric/non-space characters
+    stripped = RegexpReplace(Lower(field_name), Value(r"[^a-z0-9 ]"), Value(""))
+    # Replace spaces with hyphens
+    return Replace(stripped, Value(" "), Value("-"))
 
 
 def toponym_by_slug(request: HttpRequest, toponym_slug: str):
@@ -667,10 +677,8 @@ def toponym_by_slug(request: HttpRequest, toponym_slug: str):
     location = Location.objects.filter(name__iexact=search_term).first()
     if not location:
         location = (
-            Location.objects.annotate(
-                slug=Replace(Lower("name"), Value(" "), Value("-"))
-            )
-            .filter(slug=toponym_slug)
+            Location.objects.annotate(generated_slug=db_slug("name"))
+            .filter(generated_slug=toponym_slug)
             .first()
         )
 
@@ -688,7 +696,7 @@ def toponym_by_slug(request: HttpRequest, toponym_slug: str):
             .filter(
                 Q(slug_mss=toponym_slug)
                 | Q(slug_standardized=toponym_slug)
-                | Q(slug_moden=toponym_slug)
+                | Q(slug_modern=toponym_slug)
                 | Q(slug_alias=toponym_slug)
                 | Q(slug_ancient=toponym_slug)
             )
