@@ -27,6 +27,7 @@
         <link rel="stylesheet" href="{% static 'css/custom.css' %}">
         <link href="{% static 'fontawesomefree/css/fontawesome.css' %}" rel="stylesheet" type="text/css">
         <link href="{% static 'fontawesomefree/css/solid.css' %}" rel="stylesheet" type="text/css">
+        {% block extra_head %}{% endblock extra_head %}
         {% block extra_css %} {% endblock extra_css %}
         <!-- Matomo -->
         <script>

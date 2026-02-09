@@ -1,0 +1,32 @@
+{% if aggregated_aliases.placename_ancients or aggregated_aliases.placename_moderns %}
+    <dl>
+        {% if aggregated_aliases.placename_ancients %}
+            <div class="flex gap-1">
+                <dt class="font-bold after:content-[':'] after:font-normal whitespace-nowrap shrink-0">Ancient name</dt>
+                <dd class="flex-1">
+                    {% for ancient_name in aggregated_aliases.placename_ancients %}
+                        <span>{{ ancient_name }}</span>{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                </dd>
+            </div>
+        {% endif %}
+        {% if aggregated_aliases.placename_moderns %}
+            <div class="flex gap-1">
+                <dt class="font-bold after:content-[':'] after:font-normal whitespace-nowrap shrink-0">Modern name</dt>
+                <dd class="flex-1">
+                    {% for modern in aggregated_aliases.placename_moderns %}
+                        <span>{{ modern }}</span>{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                </dd>
+            </div>
+        {% endif %}
+        {% if toponym.modern_country %}
+            <div class="flex gap-1">
+                <dt class="font-bold after:content-[':'] after:font-normal whitespace-nowrap shrink-0">Modern country</dt>
+                <dd class="flex-1">
+                    {{ toponym.modern_country }}
+                </dd>
+            </div>
+        {% endif %}
+    </ul>
+{% endif %}
