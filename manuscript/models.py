@@ -1,3 +1,4 @@
+from datetime import datetime
 from itertools import chain
 import logging
 import re
@@ -9,6 +10,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.db.models import Q
 from django.urls import reverse
+from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 from prose.fields import RichTextField
 
@@ -875,6 +877,17 @@ class Location(models.Model):
             # If we still couldn't generate a slug, use the ID-based URL
             return reverse("toponym_by_id", kwargs={"placename_id": self.placename_id})
         return reverse("toponym_detail", kwargs={"toponym_slug": slug})
+
+    def get_citation(self, permalink):
+        """Return a formatted citation for this toponym record."""
+        today = datetime.now()
+        formatted_date = today.strftime("%B %-d, %Y")
+        contributors = "Beneš, Carrie"
+        sitename = "Gregorio Dati’s <em>La sfera = The Globe</em>: A Digital Edition"
+        url = f'<a class="underline" href="{permalink}">{permalink}</a>'
+        return mark_safe(
+            f"{contributors}. “{self.name}.” {sitename}, {formatted_date}. {url}."
+        )
 
 
 class LocationAlias(models.Model):

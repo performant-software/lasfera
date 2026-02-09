@@ -3,6 +3,10 @@
 
 {% block title %}Data on toponym {{ aggregated_aliases.name }} - La Sfera{% endblock title %}
 
+{% block extra_head %}
+    <link rel="canonical" href="{{ permalink }}">
+{% endblock extra_head %}
+
 {% block extra_css %}
     <style>
         .description a {
@@ -53,12 +57,18 @@
                         </div>
                     {% endif %}
                 </div>
+                {# Right column #}
                 <div class="lg:w-1/2">
                     {# display the location aliases if any #}
                     {% include "partials/toponym_aliases_table.html" %}
                 </div>
-                {# Right column #}
             </div>
+        </section>
+        <section class="mt-4">
+            <dl>
+                <dt class="font-bold after:content-[':'] after:font-normal">Suggested citation</dt>
+                <dd>{{ citation }}</dd>
+            </dl>
         </section>
     </div>
 {% endblock content %}

@@ -717,9 +717,9 @@ def manuscripts(request: HttpRequest):
 
 def manuscript(request: HttpRequest, siglum: str):
     get_manuscript = get_object_or_404(
-        SingleManuscript.objects.select_related("library").prefetch_related(
-            "codex_set", "textdecoration_set", "editorialstatus_set"
-        ).annotate(
+        SingleManuscript.objects.select_related("library")
+        .prefetch_related("codex_set", "textdecoration_set", "editorialstatus_set")
+        .annotate(
             has_variants=Exists(
                 TextualVariant.objects.filter(manuscript=OuterRef("pk"))
             )
@@ -903,19 +903,27 @@ def toponym(request: HttpRequest, placename_id: str):
     for alias in aliases:
         if alias.placename_modern:
             aggregated_aliases["placename_moderns"].extend(
-                name.strip() for name in alias.placename_modern.split(",") if name.strip() != "N/A"
+                name.strip()
+                for name in alias.placename_modern.split(",")
+                if name.strip() != "N/A"
             )
         if alias.placename_standardized:
             aggregated_aliases["placename_standardizeds"].extend(
-                name.strip() for name in alias.placename_standardized.split(",") if name.strip() != "N/A"
+                name.strip()
+                for name in alias.placename_standardized.split(",")
+                if name.strip() != "N/A"
             )
         if alias.placename_from_mss:
             aggregated_aliases["placename_from_msss"].extend(
-                name.strip() for name in alias.placename_from_mss.split(",") if name.strip() != "N/A"
+                name.strip()
+                for name in alias.placename_from_mss.split(",")
+                if name.strip() != "N/A"
             )
         if alias.placename_ancient:
             aggregated_aliases["placename_ancients"].extend(
-                name.strip() for name in alias.placename_ancient.split(",") if name.strip() != "N/A"
+                name.strip()
+                for name in alias.placename_ancient.split(",")
+                if name.strip() != "N/A"
             )
 
     # After aliases are processed, then handle IIIF URLs and manifests
@@ -931,6 +939,10 @@ def toponym(request: HttpRequest, placename_id: str):
     # Process line codes
     line_codes = [{"line_code": lc.code} for lc in filtered_linecodes]
 
+    # build permalink and citation
+    permalink = request.build_absolute_uri(filtered_toponym.get_absolute_url())
+    citation = filtered_toponym.get_citation(permalink)
+
     context = {
         "toponym": filtered_toponym,
         "manuscripts": filtered_manuscripts,
@@ -939,6 +951,8 @@ def toponym(request: HttpRequest, placename_id: str):
         "iiif_manifest": iiif_manifest,
         "iiif_urls": iiif_urls,
         "line_codes": line_codes,
+        "permalink": permalink,
+        "citation": citation,
     }
 
     return render(request, "gazetteer/gazetteer_single.html", context)
