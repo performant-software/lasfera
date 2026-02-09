@@ -657,30 +657,27 @@ class RegexpReplace(Func):
     """Custom function to allow regex replacement via postgres"""
 
     function = "REGEXP_REPLACE"
-    template = "%(function)s(%(expressions)s, 'g')"  # 'g' for global replacement
+    template = "%(function)s(%(expressions)s, 'g')"
 
 
 def db_slug(field_name):
     """Slugify a database lookup using only db functions"""
     # Remove non-alphanumeric/non-space characters
-    stripped = RegexpReplace(Lower(field_name), Value(r"[^a-z0-9 ]"), Value(""))
+    stripped = RegexpReplace(Lower(field_name), Value(r"[^a-z0-9 -]"), Value(""))
     # Replace spaces with hyphens
-    return Replace(stripped, Value(" "), Value("-"))
+    slugified =  Replace(stripped, Value(" "), Value("-"))
+    # Collapse multiple hyphens into one
+    return RegexpReplace(slugified, Value(r"-+"), Value("-"))
 
 
 def toponym_by_slug(request: HttpRequest, toponym_slug: str):
     """View a toponym by its slugified name"""
     # Try to find the toponym based on slugified name
-    search_term = toponym_slug.replace("-", " ")
-
-    # First try to find by name
-    location = Location.objects.filter(name__iexact=search_term).first()
-    if not location:
-        location = (
-            Location.objects.annotate(generated_slug=db_slug("name"))
-            .filter(generated_slug=toponym_slug)
-            .first()
-        )
+    location = (
+        Location.objects.annotate(generated_slug=db_slug("name"))
+        .filter(generated_slug=toponym_slug)
+        .first()
+    )
 
     # If not found by name, check aliases
     if not location:
