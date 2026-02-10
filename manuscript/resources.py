@@ -362,6 +362,7 @@ class LocationAliasResource(resources.ModelResource):
                 placename_id=pid,
                 defaults={"name": row.get("HistEng_Name", "").strip()},
             )
+            self.location_cache[pid] = location
             row["_related_location"] = location
 
     def skip_row(self, instance, original, row, import_validation_errors=None):
