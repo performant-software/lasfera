@@ -281,7 +281,6 @@ class LocationResource(resources.ModelResource):
 
 
 class LocationAliasResource(resources.ModelResource):
-    id = fields.Field(attribute="id", column_name="ID")
     location = fields.Field(
         column_name="Place_ID",
         attribute="location",
@@ -291,84 +290,110 @@ class LocationAliasResource(resources.ModelResource):
 
     class Meta:
         model = LocationAlias
-        fields = ("id", "location", "placename_alias")
+        fields = ("location", "placename_alias")
+        import_id_fields = ["location", "placename_alias"]
+        skip_unchanged = True
+        report_skipped = True
 
-    def get_diff_headers(self):
-        return ["ID", "Place_ID", "Label", "MS", "Folio"]
+    # cache manuscripts by siglum to prevent unnecessary sql queries
+    _ms_cache = None
 
-    def import_row(
-        self, row, instance_loader, using_transactions=True, dry_run=True, **kwargs
-    ):
-        row_result = self.get_row_result_class()()
+    @property
+    def ms_cache(self):
+        """lazy-loaded manuscript cache by siglum"""
+        if self._ms_cache is None:
+            self._ms_cache = {
+                m.siglum.strip(): m
+                for m in SingleManuscript.objects.filter(siglum__isnull=False)
+            }
+        return self._ms_cache
 
-        try:
-            if not row.get("Place_ID") or not row.get("MS"):
-                row_result.import_type = row_result.IMPORT_TYPE_SKIP
-                row_result.diff = [
-                    row.get("ID"),
-                    row.get("Place_ID"),
-                    row.get("Label"),
-                    row.get("MS"),
-                    row.get("Folio"),
-                ]
-                return row_result
+    def before_import(self, dataset, **kwargs):
+        """Clean extra rows above the header"""
+        found_header = False
+        while len(dataset) > 0:
+            # look for Place_ID in headers
+            if "Place_ID" in dataset.headers:
+                found_header = True
+                break
+            # if the first 'dataset' row contains Place_ID, promote row to headers
+            if "Place_ID" in [str(cell) for cell in dataset[0]]:
+                dataset.headers = dataset[0]
+                del dataset[0]
+                found_header = True
+                break
+            # otherwise, delete row and keep looking
+            del dataset[0]
+        if not found_header:
+            raise ValueError("Could not find a valid header row containing 'Place_ID'.")
 
-            if "?" in str(row.get("Place_ID", "")):
-                row_result.import_type = row_result.IMPORT_TYPE_SKIP
-                row_result.diff = [
-                    row.get("ID"),
-                    row.get("Place_ID"),
-                    row.get("Label"),
-                    row.get("MS"),
-                    row.get("Folio"),
-                ]
-                return row_result
+    def before_import_row(self, row, **kwargs):
+        """skip rows with uncertain Place_ID / manuscripts that don't exist"""
+        if row.get("Label"):
+            row["Label"] = str(row["Label"]).strip()
 
-            if not dry_run:
-                location, _ = Location.objects.get_or_create(
-                    placename_id=row["Place_ID"],
-                    defaults={"name": row.get("HistEng_Name", "")},
+        pid = row.get("Place_ID")
+        if not pid or "?" in str(pid):
+            row["_skip"] = True
+            return
+
+        ms_siglum = str(row.get("MS", "")).strip()
+        if ms_siglum not in self.ms_cache:
+            row["_skip"] = True
+            return
+
+        # ensure location is created if it doesn't exist
+        location, _ = Location.objects.get_or_create(
+            placename_id=row["Place_ID"],
+            defaults={"name": row.get("HistEng_Name", "").strip()},
+        )
+        row["_related_location"] = location
+
+    def skip_row(self, instance, original, row, import_validation_errors=None):
+        """skip a row if marked _skip"""
+        if row.get("_skip"):
+            return True
+        return super().skip_row(
+            instance, original, row, import_validation_errors=import_validation_errors
+        )
+
+    def get_instance(self, instance_loader, row):
+        """find LocationAlias by Place_ID + Label, prevent IntegrityError"""
+        related_location = row.get("_related_location")
+        label = row.get("Label")
+        if not related_location or not label:
+            return None
+        return LocationAlias.objects.filter(
+            location=related_location, placename_alias=label
+        ).first()
+
+    def import_instance(self, instance, row, **kwargs):
+        """handle created Location"""
+        instance.location = row.get("_related_location")
+        # must now manually handle Label
+        instance.placename_alias = row.get("Label")
+
+    def after_import_row(self, row, row_result, **kwargs):
+        if (
+            not kwargs.get("dry_run", False)
+            and row_result.import_type != row_result.IMPORT_TYPE_SKIP
+        ):
+            alias = row_result.instance
+            if not alias or not alias.pk:
+                return
+
+            # associate MS
+            ms_siglum = row.get("MS").strip()
+            manuscript = self.ms_cache.get(ms_siglum)
+            alias.manuscripts.add(manuscript)
+
+            # associate folio
+            folio_number = str(row.get("Folio", "")).strip()
+            if folio_number:
+                folio, _ = Folio.objects.get_or_create(
+                    manuscript=manuscript, folio_number=folio_number
                 )
-
-                alias, created = LocationAlias.objects.get_or_create(
-                    location=location, placename_alias=row["Label"]
-                )
-
-                manuscript = SingleManuscript.objects.get(siglum=row["MS"].strip())
-                alias.manuscripts.add(manuscript)
-
-                if row.get("Folio"):
-                    folio, _ = Folio.objects.get_or_create(
-                        manuscript=manuscript, folio_number=row["Folio"].strip()
-                    )
-                    alias.folios.add(folio)
-
-                row_result.object_id = alias.pk
-                row_result.object_repr = (
-                    f"{alias.location.placename_id} - {alias.placename_alias}"
-                )
-
-            row_result.import_type = row_result.IMPORT_TYPE_NEW
-            row_result.diff = [
-                row.get("ID"),
-                row.get("Place_ID"),
-                row.get("Label"),
-                row.get("MS"),
-                row.get("Folio"),
-            ]
-
-        except Exception as e:
-            row_result.import_type = row_result.IMPORT_TYPE_ERROR
-            row_result.errors.append(str(e))
-            row_result.diff = [
-                row.get("ID"),
-                row.get("Place_ID"),
-                row.get("Label"),
-                row.get("MS"),
-                row.get("Folio"),
-            ]
-
-        return row_result
+                alias.folios.add(folio)
 
 
 class LineCodeResource(resources.ModelResource):
