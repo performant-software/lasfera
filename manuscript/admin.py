@@ -392,6 +392,7 @@ class LocationAdmin(ImportExportModelAdmin):
         "toponym_type",
         "place_type",
         "get_related_folios",
+        "slug",
         "id",
     )
     search_fields = ("placename_id", "description", "modern_country")

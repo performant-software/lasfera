@@ -200,17 +200,33 @@ class LocationResource(resources.ModelResource):
     longitude = fields.Field(
         column_name="Longitude", attribute="longitude", widget=widgets.FloatWidget()
     )
-    authority_file = fields.Field(column_name="Geo_Ref", attribute="authority_file")
+    authority_file = fields.Field(column_name="WHG_Link", attribute="authority_file")
     modern_country = fields.Field(column_name="Country", attribute="modern_country")
+    description = fields.Field(column_name="Toponym_Text", attribute="description")
 
-    def before_import(self, dataset, using_transactions=True, dry_run=False, **kwargs):
-        """Skip header row"""
+    def before_import(self, dataset, **kwargs):
+        """Clean the dataset if double headers are detected."""
         if len(dataset) > 0:
-            del dataset[0]
+            # detect if the first header is the descriptive title row
+            first_header = str(dataset.headers[0]) if dataset.headers else ""
+            if "SFERA SITE DATA" in first_header or "Place_ID" not in dataset.headers:
+                # real headers are in the second row (first "dataset" row)
+                dataset.headers = dataset[0]
+                # remove them from being read
+                del dataset[0]
+
+    def before_import_row(self, row, **kwargs):
+        """convert - or N/A to None"""
+        null_strings = ["N/A", "n/a", "-"]
+        for key in row:
+            if isinstance(row[key], str) and row[key].strip() in null_strings:
+                row[key] = None
 
     def after_import_row(self, row, row_result, **kwargs):
         """Create alias records for modern and ancient names if they exist"""
-        if row_result.import_type in [
+        # check dry_run to prevent creating LocationAlias records during preview
+        dry_run = kwargs.get("dry_run", False)
+        if not dry_run and row_result.import_type in [
             row_result.IMPORT_TYPE_NEW,
             row_result.IMPORT_TYPE_UPDATE,
         ]:
@@ -251,6 +267,7 @@ class LocationResource(resources.ModelResource):
         model = Location
         import_id_fields = ["placename_id"]
         skip_unchanged = True
+        report_skipped = True
         fields = (
             "placename_id",
             "name",
@@ -259,6 +276,7 @@ class LocationResource(resources.ModelResource):
             "longitude",
             "authority_file",
             "modern_country",
+            "description",
         )
 
 
@@ -355,10 +373,10 @@ class LocationAliasResource(resources.ModelResource):
 
 class LineCodeResource(resources.ModelResource):
     """Resource for importing and exporting LineCode data"""
-    
+
     code = fields.Field(column_name="Code", attribute="code")
     toponyms = fields.Field(column_name="Toponyms")
-    
+
     class Meta:
         model = LineCode
         import_id_fields = ["code"]
@@ -366,128 +384,152 @@ class LineCodeResource(resources.ModelResource):
         export_order = fields
         skip_unchanged = True
         report_skipped = True
-        
+
     def dehydrate_toponyms(self, line_code):
         """Export the associated toponyms as a comma-separated list of placename IDs"""
         toponyms = line_code.associated_toponyms.all()
         return ", ".join([t.placename_id for t in toponyms]) if toponyms else ""
-    
+
     def before_import(self, dataset, using_transactions=True, dry_run=False, **kwargs):
         """Log the data being imported to diagnose issues"""
         logger.info(f"Importing LineCode data: {len(dataset)} rows")
         logger.info(f"Columns: {dataset.headers}")
         if len(dataset) > 0:
             logger.info(f"First row: {dataset[0]}")
-        
+
     def hydrate_toponyms(self, value):
         """This method is called during import but we handle the relationship in after_import_row"""
         return value
-    
+
     def get_instance(self, instance_loader, row):
         """Get existing instance for a row if it exists"""
         try:
             return LineCode.objects.get(code=row["Code"])
         except LineCode.DoesNotExist:
             return None
-    
+
     def before_import_row(self, row, **kwargs):
         """Process a row before import - ensure we have the required fields"""
         # Log the incoming row data
         logger.info(f"Processing row: {row}")
-        
+
         # Make sure all necessary fields are present or create default values
         if "Code" not in row:
             logger.warning("Skipping row without Code field")
             return False
-            
+
         # Make sure Toponyms is present even if empty
         if "Toponyms" not in row:
             logger.warning(f"Row is missing Toponyms field: {row}")
             row["Toponyms"] = ""
-            
+
         return True
-                
+
     def after_import_row(self, row, row_result, **kwargs):
         """Process a row after import to handle M2M relationships"""
-        if row_result.import_type in [row_result.IMPORT_TYPE_NEW, row_result.IMPORT_TYPE_UPDATE]:
+        if row_result.import_type in [
+            row_result.IMPORT_TYPE_NEW,
+            row_result.IMPORT_TYPE_UPDATE,
+        ]:
             try:
                 # Get the line code instance
                 line_code = LineCode.objects.get(code=row.get("Code"))
-                
+
                 # Handle associated toponyms if present in the import
                 toponyms = row.get("Toponyms")
                 logger.info(f"Processing toponyms for {line_code.code}: {toponyms}")
-                
+
                 if toponyms:
                     # Clear existing toponyms first to avoid duplicates
                     line_code.associated_toponyms.clear()
-                    
+
                     # Split the toponyms string by comma and strip whitespace
                     toponym_list = [t.strip() for t in toponyms.split(",")]
-                    
+
                     # Add each toponym to the line code
                     for toponym_id in toponym_list:
                         if not toponym_id:  # Skip empty strings
                             continue
-                            
+
                         try:
                             location = Location.objects.get(placename_id=toponym_id)
                             line_code.associated_toponyms.add(location)
-                            logger.info(f"Added toponym {toponym_id} to line code {line_code.code}")
+                            logger.info(
+                                f"Added toponym {toponym_id} to line code {line_code.code}"
+                            )
                         except Location.DoesNotExist:
-                            logger.warning(f"Toponym {toponym_id} not found for line code {line_code.code}")
-                            
+                            logger.warning(
+                                f"Toponym {toponym_id} not found for line code {line_code.code}"
+                            )
+
             except LineCode.DoesNotExist:
-                logger.error(f"LineCode {row.get('Code')} not found during after_import_row")
+                logger.error(
+                    f"LineCode {row.get('Code')} not found during after_import_row"
+                )
             except Exception as e:
-                logger.error(f"Error processing toponyms for {row.get('Code')}: {str(e)}", exc_info=True)
-                
+                logger.error(
+                    f"Error processing toponyms for {row.get('Code')}: {str(e)}",
+                    exc_info=True,
+                )
+
     def import_row(self, row, instance_loader, **kwargs):
         """Override import_row to better handle the import process for LineCode objects"""
-        dry_run = kwargs.get('dry_run', False)
+        dry_run = kwargs.get("dry_run", False)
         logger.info(f"Import row (dry_run={dry_run}): {row}")
-        
+
         import_result = super().import_row(row, instance_loader, **kwargs)
-        
+
         # Log the import result for debugging
-        logger.info(f"Import result: {import_result.import_type}, errors: {import_result.errors}")
-        
+        logger.info(
+            f"Import result: {import_result.import_type}, errors: {import_result.errors}"
+        )
+
         # Add the toponyms to the diff display to show what's being imported
-        if 'Toponyms' in row and row['Toponyms']:
-            import_result.diff.append(row['Toponyms'])
+        if "Toponyms" in row and row["Toponyms"]:
+            import_result.diff.append(row["Toponyms"])
         else:
             import_result.diff.append("")
-        
-        # If we're not in dry run mode and the import was successful, 
+
+        # If we're not in dry run mode and the import was successful,
         # double check that toponyms were properly processed
-        if not dry_run and import_result.import_type not in [import_result.IMPORT_TYPE_ERROR, import_result.IMPORT_TYPE_SKIP]:
+        if not dry_run and import_result.import_type not in [
+            import_result.IMPORT_TYPE_ERROR,
+            import_result.IMPORT_TYPE_SKIP,
+        ]:
             try:
                 # Get the line code instance
                 line_code = LineCode.objects.get(code=row.get("Code"))
-                
+
                 # If there are no toponyms already assigned but we have them in the row,
                 # try to assign them again
                 if not line_code.associated_toponyms.exists() and row.get("Toponyms"):
                     # Split the toponyms string by comma and strip whitespace
                     toponym_list = [t.strip() for t in row.get("Toponyms").split(",")]
-                    
+
                     # Add each toponym to the line code
                     for toponym_id in toponym_list:
                         if not toponym_id:  # Skip empty strings
                             continue
-                            
+
                         try:
                             location = Location.objects.get(placename_id=toponym_id)
                             line_code.associated_toponyms.add(location)
-                            logger.info(f"Added toponym {toponym_id} to line code {line_code.code} in double-check")
+                            logger.info(
+                                f"Added toponym {toponym_id} to line code {line_code.code} in double-check"
+                            )
                         except Location.DoesNotExist:
-                            logger.warning(f"Toponym {toponym_id} not found for line code {line_code.code}")
-            
+                            logger.warning(
+                                f"Toponym {toponym_id} not found for line code {line_code.code}"
+                            )
+
             except Exception as e:
-                logger.error(f"Error in import_row double-check for {row.get('Code')}: {str(e)}", exc_info=True)
-        
+                logger.error(
+                    f"Error in import_row double-check for {row.get('Code')}: {str(e)}",
+                    exc_info=True,
+                )
+
         return import_result
-        
+
     def get_diff_headers(self):
         """Define headers for the diff display"""
         return ["Code", "Toponyms"]
