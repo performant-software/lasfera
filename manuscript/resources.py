@@ -294,9 +294,13 @@ class LocationAliasResource(resources.ModelResource):
         import_id_fields = ["location", "placename_alias"]
         skip_unchanged = True
         report_skipped = True
+        use_bulk = True
+        batch_size = 1000
 
     # cache manuscripts by siglum to prevent unnecessary sql queries
     _ms_cache = None
+    # and locations by placename_id
+    _location_cache = None
 
     @property
     def ms_cache(self):
@@ -307,6 +311,15 @@ class LocationAliasResource(resources.ModelResource):
                 for m in SingleManuscript.objects.filter(siglum__isnull=False)
             }
         return self._ms_cache
+
+    @property
+    def loc_cache(self):
+        if self._loc_cache is None:
+            self._loc_cache = {
+                l.placename_id: l
+                for l in Location.objects.filter(placename_id__isnull=False)
+            }
+        return self._loc_cache
 
     def before_import(self, dataset, **kwargs):
         """Clean extra rows above the header"""
@@ -343,11 +356,14 @@ class LocationAliasResource(resources.ModelResource):
             return
 
         # ensure location is created if it doesn't exist
-        location, _ = Location.objects.get_or_create(
-            placename_id=row["Place_ID"],
-            defaults={"name": row.get("HistEng_Name", "").strip()},
-        )
-        row["_related_location"] = location
+        if pid in self.loc_cache:
+            row["_related_location"] = self.loc_cache[pid]
+        else:
+            location, _ = Location.objects.get_or_create(
+                placename_id=pid,
+                defaults={"name": row.get("HistEng_Name", "").strip()},
+            )
+            row["_related_location"] = location
 
     def skip_row(self, instance, original, row, import_validation_errors=None):
         """skip a row if marked _skip"""
