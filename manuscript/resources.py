@@ -313,13 +313,13 @@ class LocationAliasResource(resources.ModelResource):
         return self._ms_cache
 
     @property
-    def loc_cache(self):
-        if self._loc_cache is None:
-            self._loc_cache = {
+    def location_cache(self):
+        if self._location_cache is None:
+            self._location_cache = {
                 l.placename_id: l
                 for l in Location.objects.filter(placename_id__isnull=False)
             }
-        return self._loc_cache
+        return self._location_cache
 
     def before_import(self, dataset, **kwargs):
         """Clean extra rows above the header"""
@@ -356,8 +356,8 @@ class LocationAliasResource(resources.ModelResource):
             return
 
         # ensure location is created if it doesn't exist
-        if pid in self.loc_cache:
-            row["_related_location"] = self.loc_cache[pid]
+        if pid in self.location_cache:
+            row["_related_location"] = self.location_cache[pid]
         else:
             location, _ = Location.objects.get_or_create(
                 placename_id=pid,
