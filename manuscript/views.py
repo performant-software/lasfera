@@ -11,7 +11,7 @@ from django.contrib.staticfiles import finders
 from django.db.models import Exists, Func, OuterRef, Q, Value
 from django.db.models.functions import Replace, Lower
 from django.http import Http404, HttpRequest, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
@@ -665,7 +665,7 @@ def db_slug(field_name):
     # Remove non-alphanumeric/non-space characters
     stripped = RegexpReplace(Lower(field_name), Value(r"[^a-z0-9 -]"), Value(""))
     # Replace spaces with hyphens
-    slugified =  Replace(stripped, Value(" "), Value("-"))
+    slugified = Replace(stripped, Value(" "), Value("-"))
     # Collapse multiple hyphens into one
     return RegexpReplace(slugified, Value(r"-+"), Value("-"))
 
@@ -673,11 +673,7 @@ def db_slug(field_name):
 def toponym_by_slug(request: HttpRequest, toponym_slug: str):
     """View a toponym by its slugified name"""
     # Try to find the toponym based on slugified name
-    location = (
-        Location.objects.annotate(generated_slug=db_slug("name"))
-        .filter(generated_slug=toponym_slug)
-        .first()
-    )
+    location = Location.objects.filter(slug=toponym_slug).first()
 
     # If not found by name, check aliases
     if not location:
@@ -701,7 +697,8 @@ def toponym_by_slug(request: HttpRequest, toponym_slug: str):
             .first()
         )
         if alias:
-            location = alias.location
+            # Alias slug is not canonical, so redirect to canonical url
+            return redirect(alias.location.get_absolute_url())
 
     if not location:
         # If still not found, return 404
