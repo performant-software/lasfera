@@ -747,14 +747,17 @@ def toponym(request: HttpRequest, placename_id: str):
     # Then process aggregations
     aggregated_aliases = {
         "name": filtered_toponym.name,
-        "aliases": [
-            {
-                "placename_alias": alias.placename_alias,
-                "manuscripts": alias.manuscripts.all(),
-                "folios": alias.folios.all(),
-            }
-            for alias in aliases
-        ],
+        "aliases": sorted(
+            [
+                {
+                    "placename_alias": alias.placename_alias,
+                    "manuscripts": alias.manuscripts.all(),
+                    "folios": alias.folios.all(),
+                }
+                for alias in aliases
+            ],
+            key=lambda x: (x["placename_alias"] or "").lower(),
+        ),
         "placename_moderns": [],
         "placename_standardizeds": [],
         "placename_from_msss": [],
