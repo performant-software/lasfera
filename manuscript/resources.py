@@ -200,17 +200,15 @@ class LocationResource(resources.ModelResource):
     longitude = fields.Field(
         column_name="Longitude", attribute="longitude", widget=widgets.FloatWidget()
     )
-    authority_file = fields.Field(column_name="Geo_Ref", attribute="authority_file")
+    authority_file = fields.Field(column_name="WHG_Link", attribute="authority_file")
     modern_country = fields.Field(column_name="Country", attribute="modern_country")
-
-    def before_import(self, dataset, using_transactions=True, dry_run=False, **kwargs):
-        """Skip header row"""
-        if len(dataset) > 0:
-            del dataset[0]
+    description = fields.Field(column_name="Toponym_Text", attribute="description")
 
     def after_import_row(self, row, row_result, **kwargs):
         """Create alias records for modern and ancient names if they exist"""
-        if row_result.import_type in [
+        # check dry_run to prevent creating LocationAlias records during preview
+        dry_run = kwargs.get("dry_run", False)
+        if not dry_run and row_result.import_type in [
             row_result.IMPORT_TYPE_NEW,
             row_result.IMPORT_TYPE_UPDATE,
         ]:
@@ -251,6 +249,7 @@ class LocationResource(resources.ModelResource):
         model = Location
         import_id_fields = ["placename_id"]
         skip_unchanged = True
+        report_skipped = True
         fields = (
             "placename_id",
             "name",
@@ -259,6 +258,7 @@ class LocationResource(resources.ModelResource):
             "longitude",
             "authority_file",
             "modern_country",
+            "description",
         )
 
 
