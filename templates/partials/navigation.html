@@ -13,6 +13,7 @@
 
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center space-x-4">
+                <a href="{% slugurl 'introduction' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Introduction</a>
                 <a href="{% url 'manuscript_stanzas' siglum='Urb1' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Edition</a>
                 <a href="{% url 'toponyms' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gazetteer</a>
                 <a href="{% url 'manuscripts' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Manuscripts</a>
@@ -48,7 +49,6 @@
                 </div>
 
                 <a href="{% slugurl 'about' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
-                <a href="{% slugurl 'introduction' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Introduction</a>
             </div>
 
             <!-- Mobile menu button -->
@@ -75,6 +75,7 @@
         x-transition:leave-end="opacity-0 scale-95"
         class="md:hidden">
         <div class="px-2 pt-2 pb-3 space-y-1">
+            <a href="{% slugurl 'introduction' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Introduction</a>
             <a href="{% url 'manuscript_stanzas' siglum='Urb1' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Edition</a>
             <a href="{% url 'toponyms' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gazetteer</a>
             <a href="{% url 'manuscripts' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Manuscripts</a>
@@ -108,7 +109,6 @@
             </div>
 
             <a href="{% slugurl 'about' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
-            <a href="{% slugurl 'introduction' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Introduction</a>
         </div>
     </div>
 </nav>
