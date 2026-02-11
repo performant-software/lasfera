@@ -22,7 +22,7 @@
           </p>
         {% endif %}
       </div>
-      <ul>
+      <ol class="list-decimal">
         {% for manuscript in manuscripts %}
           <li>
             {% if manuscript.siglum %}
@@ -34,7 +34,7 @@
             {% endif %}
           </li>
         {% endfor %}
-      </ul>
+      </ol>
     </section>
   </div>
 {% endblock content %}
