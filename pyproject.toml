@@ -36,6 +36,7 @@ dj-database-url = "^3.0.1"
 whitenoise = "^6.11.0"
 django-storages = "^1.14.6"
 boto3 = "^1.42.18"
+unidecode = "^1.4.0"
 
 [tool.poetry.group.development.dependencies]
 django-tailwind = {extras = ["reload"], version = "^3.8.0"}

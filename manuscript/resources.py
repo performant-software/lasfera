@@ -200,17 +200,33 @@ class LocationResource(resources.ModelResource):
     longitude = fields.Field(
         column_name="Longitude", attribute="longitude", widget=widgets.FloatWidget()
     )
-    authority_file = fields.Field(column_name="Geo_Ref", attribute="authority_file")
+    authority_file = fields.Field(column_name="WHG_Link", attribute="authority_file")
     modern_country = fields.Field(column_name="Country", attribute="modern_country")
+    description = fields.Field(column_name="Toponym_Text", attribute="description")
 
-    def before_import(self, dataset, using_transactions=True, dry_run=False, **kwargs):
-        """Skip header row"""
+    def before_import(self, dataset, **kwargs):
+        """Clean the dataset if double headers are detected."""
         if len(dataset) > 0:
-            del dataset[0]
+            # detect if the first header is the descriptive title row
+            first_header = str(dataset.headers[0]) if dataset.headers else ""
+            if "SFERA SITE DATA" in first_header or "Place_ID" not in dataset.headers:
+                # real headers are in the second row (first "dataset" row)
+                dataset.headers = dataset[0]
+                # remove them from being read
+                del dataset[0]
+
+    def before_import_row(self, row, **kwargs):
+        """convert - or N/A to None"""
+        null_strings = ["N/A", "n/a", "-"]
+        for key in row:
+            if isinstance(row[key], str) and row[key].strip() in null_strings:
+                row[key] = None
 
     def after_import_row(self, row, row_result, **kwargs):
         """Create alias records for modern and ancient names if they exist"""
-        if row_result.import_type in [
+        # check dry_run to prevent creating LocationAlias records during preview
+        dry_run = kwargs.get("dry_run", False)
+        if not dry_run and row_result.import_type in [
             row_result.IMPORT_TYPE_NEW,
             row_result.IMPORT_TYPE_UPDATE,
         ]:
@@ -251,6 +267,7 @@ class LocationResource(resources.ModelResource):
         model = Location
         import_id_fields = ["placename_id"]
         skip_unchanged = True
+        report_skipped = True
         fields = (
             "placename_id",
             "name",
@@ -259,11 +276,11 @@ class LocationResource(resources.ModelResource):
             "longitude",
             "authority_file",
             "modern_country",
+            "description",
         )
 
 
 class LocationAliasResource(resources.ModelResource):
-    id = fields.Field(attribute="id", column_name="ID")
     location = fields.Field(
         column_name="Place_ID",
         attribute="location",
@@ -273,92 +290,133 @@ class LocationAliasResource(resources.ModelResource):
 
     class Meta:
         model = LocationAlias
-        fields = ("id", "location", "placename_alias")
+        fields = ("location", "placename_alias")
+        import_id_fields = ["location", "placename_alias"]
+        skip_unchanged = True
+        report_skipped = True
 
-    def get_diff_headers(self):
-        return ["ID", "Place_ID", "Label", "MS", "Folio"]
+    # cache manuscripts by siglum to prevent unnecessary sql queries
+    _ms_cache = None
+    # and locations by placename_id
+    _location_cache = None
 
-    def import_row(
-        self, row, instance_loader, using_transactions=True, dry_run=True, **kwargs
-    ):
-        row_result = self.get_row_result_class()()
+    @property
+    def ms_cache(self):
+        """lazy-loaded manuscript cache by siglum"""
+        if self._ms_cache is None:
+            self._ms_cache = {
+                m.siglum.strip(): m
+                for m in SingleManuscript.objects.filter(siglum__isnull=False)
+            }
+        return self._ms_cache
 
-        try:
-            if not row.get("Place_ID") or not row.get("MS"):
-                row_result.import_type = row_result.IMPORT_TYPE_SKIP
-                row_result.diff = [
-                    row.get("ID"),
-                    row.get("Place_ID"),
-                    row.get("Label"),
-                    row.get("MS"),
-                    row.get("Folio"),
-                ]
-                return row_result
+    @property
+    def location_cache(self):
+        if self._location_cache is None:
+            self._location_cache = {
+                l.placename_id: l
+                for l in Location.objects.filter(placename_id__isnull=False)
+            }
+        return self._location_cache
 
-            if "?" in str(row.get("Place_ID", "")):
-                row_result.import_type = row_result.IMPORT_TYPE_SKIP
-                row_result.diff = [
-                    row.get("ID"),
-                    row.get("Place_ID"),
-                    row.get("Label"),
-                    row.get("MS"),
-                    row.get("Folio"),
-                ]
-                return row_result
+    def before_import(self, dataset, **kwargs):
+        """Clean extra rows above the header"""
+        found_header = False
+        while len(dataset) > 0:
+            # look for Place_ID in headers
+            if "Place_ID" in dataset.headers:
+                found_header = True
+                break
+            # if the first 'dataset' row contains Place_ID, promote row to headers
+            if "Place_ID" in [str(cell) for cell in dataset[0]]:
+                dataset.headers = dataset[0]
+                del dataset[0]
+                found_header = True
+                break
+            # otherwise, delete row and keep looking
+            del dataset[0]
+        if not found_header:
+            raise ValueError("Could not find a valid header row containing 'Place_ID'.")
 
-            if not dry_run:
-                location, _ = Location.objects.get_or_create(
-                    placename_id=row["Place_ID"],
-                    defaults={"name": row.get("HistEng_Name", "")},
+    def before_import_row(self, row, **kwargs):
+        """skip rows with uncertain Place_ID / manuscripts that don't exist"""
+        if row.get("Label"):
+            row["Label"] = str(row["Label"]).strip()
+
+        pid = row.get("Place_ID")
+        if not pid or "?" in str(pid):
+            row["_skip"] = True
+            return
+
+        ms_siglum = str(row.get("MS", "")).strip()
+        if ms_siglum not in self.ms_cache:
+            row["_skip"] = True
+            return
+
+        # ensure location is created if it doesn't exist
+        if pid in self.location_cache:
+            row["_related_location"] = self.location_cache[pid]
+        else:
+            location, _ = Location.objects.get_or_create(
+                placename_id=pid,
+                defaults={"name": row.get("HistEng_Name", "").strip()},
+            )
+            self.location_cache[pid] = location
+            row["_related_location"] = location
+
+    def skip_row(self, instance, original, row, import_validation_errors=None):
+        """skip a row if marked _skip"""
+        if row.get("_skip"):
+            return True
+        return super().skip_row(
+            instance, original, row, import_validation_errors=import_validation_errors
+        )
+
+    def get_instance(self, instance_loader, row):
+        """find LocationAlias by Place_ID + Label, prevent IntegrityError"""
+        related_location = row.get("_related_location")
+        label = row.get("Label")
+        if not related_location or not label:
+            return None
+        return LocationAlias.objects.filter(
+            location=related_location, placename_alias=label
+        ).first()
+
+    def import_instance(self, instance, row, **kwargs):
+        """handle created Location"""
+        instance.location = row.get("_related_location")
+        # must now manually handle Label
+        instance.placename_alias = row.get("Label")
+
+    def after_import_row(self, row, row_result, **kwargs):
+        if (
+            not kwargs.get("dry_run", False)
+            and row_result.import_type != row_result.IMPORT_TYPE_SKIP
+        ):
+            alias = row_result.instance
+            if not alias or not alias.pk:
+                return
+
+            # associate MS
+            ms_siglum = row.get("MS").strip()
+            manuscript = self.ms_cache.get(ms_siglum)
+            alias.manuscripts.add(manuscript)
+
+            # associate folio
+            folio_number = str(row.get("Folio", "")).strip()
+            if folio_number:
+                folio, _ = Folio.objects.get_or_create(
+                    manuscript=manuscript, folio_number=folio_number
                 )
-
-                alias, created = LocationAlias.objects.get_or_create(
-                    location=location, placename_alias=row["Label"]
-                )
-
-                manuscript = SingleManuscript.objects.get(siglum=row["MS"].strip())
-                alias.manuscripts.add(manuscript)
-
-                if row.get("Folio"):
-                    folio, _ = Folio.objects.get_or_create(
-                        manuscript=manuscript, folio_number=row["Folio"].strip()
-                    )
-                    alias.folios.add(folio)
-
-                row_result.object_id = alias.pk
-                row_result.object_repr = (
-                    f"{alias.location.placename_id} - {alias.placename_alias}"
-                )
-
-            row_result.import_type = row_result.IMPORT_TYPE_NEW
-            row_result.diff = [
-                row.get("ID"),
-                row.get("Place_ID"),
-                row.get("Label"),
-                row.get("MS"),
-                row.get("Folio"),
-            ]
-
-        except Exception as e:
-            row_result.import_type = row_result.IMPORT_TYPE_ERROR
-            row_result.errors.append(str(e))
-            row_result.diff = [
-                row.get("ID"),
-                row.get("Place_ID"),
-                row.get("Label"),
-                row.get("MS"),
-                row.get("Folio"),
-            ]
-
-        return row_result
+                alias.folios.add(folio)
 
 
 class LineCodeResource(resources.ModelResource):
     """Resource for importing and exporting LineCode data"""
-    
+
     code = fields.Field(column_name="Code", attribute="code")
     toponyms = fields.Field(column_name="Toponyms")
-    
+
     class Meta:
         model = LineCode
         import_id_fields = ["code"]
@@ -366,128 +424,152 @@ class LineCodeResource(resources.ModelResource):
         export_order = fields
         skip_unchanged = True
         report_skipped = True
-        
+
     def dehydrate_toponyms(self, line_code):
         """Export the associated toponyms as a comma-separated list of placename IDs"""
         toponyms = line_code.associated_toponyms.all()
         return ", ".join([t.placename_id for t in toponyms]) if toponyms else ""
-    
+
     def before_import(self, dataset, using_transactions=True, dry_run=False, **kwargs):
         """Log the data being imported to diagnose issues"""
         logger.info(f"Importing LineCode data: {len(dataset)} rows")
         logger.info(f"Columns: {dataset.headers}")
         if len(dataset) > 0:
             logger.info(f"First row: {dataset[0]}")
-        
+
     def hydrate_toponyms(self, value):
         """This method is called during import but we handle the relationship in after_import_row"""
         return value
-    
+
     def get_instance(self, instance_loader, row):
         """Get existing instance for a row if it exists"""
         try:
             return LineCode.objects.get(code=row["Code"])
         except LineCode.DoesNotExist:
             return None
-    
+
     def before_import_row(self, row, **kwargs):
         """Process a row before import - ensure we have the required fields"""
         # Log the incoming row data
         logger.info(f"Processing row: {row}")
-        
+
         # Make sure all necessary fields are present or create default values
         if "Code" not in row:
             logger.warning("Skipping row without Code field")
             return False
-            
+
         # Make sure Toponyms is present even if empty
         if "Toponyms" not in row:
             logger.warning(f"Row is missing Toponyms field: {row}")
             row["Toponyms"] = ""
-            
+
         return True
-                
+
     def after_import_row(self, row, row_result, **kwargs):
         """Process a row after import to handle M2M relationships"""
-        if row_result.import_type in [row_result.IMPORT_TYPE_NEW, row_result.IMPORT_TYPE_UPDATE]:
+        if row_result.import_type in [
+            row_result.IMPORT_TYPE_NEW,
+            row_result.IMPORT_TYPE_UPDATE,
+        ]:
             try:
                 # Get the line code instance
                 line_code = LineCode.objects.get(code=row.get("Code"))
-                
+
                 # Handle associated toponyms if present in the import
                 toponyms = row.get("Toponyms")
                 logger.info(f"Processing toponyms for {line_code.code}: {toponyms}")
-                
+
                 if toponyms:
                     # Clear existing toponyms first to avoid duplicates
                     line_code.associated_toponyms.clear()
-                    
+
                     # Split the toponyms string by comma and strip whitespace
                     toponym_list = [t.strip() for t in toponyms.split(",")]
-                    
+
                     # Add each toponym to the line code
                     for toponym_id in toponym_list:
                         if not toponym_id:  # Skip empty strings
                             continue
-                            
+
                         try:
                             location = Location.objects.get(placename_id=toponym_id)
                             line_code.associated_toponyms.add(location)
-                            logger.info(f"Added toponym {toponym_id} to line code {line_code.code}")
+                            logger.info(
+                                f"Added toponym {toponym_id} to line code {line_code.code}"
+                            )
                         except Location.DoesNotExist:
-                            logger.warning(f"Toponym {toponym_id} not found for line code {line_code.code}")
-                            
+                            logger.warning(
+                                f"Toponym {toponym_id} not found for line code {line_code.code}"
+                            )
+
             except LineCode.DoesNotExist:
-                logger.error(f"LineCode {row.get('Code')} not found during after_import_row")
+                logger.error(
+                    f"LineCode {row.get('Code')} not found during after_import_row"
+                )
             except Exception as e:
-                logger.error(f"Error processing toponyms for {row.get('Code')}: {str(e)}", exc_info=True)
-                
+                logger.error(
+                    f"Error processing toponyms for {row.get('Code')}: {str(e)}",
+                    exc_info=True,
+                )
+
     def import_row(self, row, instance_loader, **kwargs):
         """Override import_row to better handle the import process for LineCode objects"""
-        dry_run = kwargs.get('dry_run', False)
+        dry_run = kwargs.get("dry_run", False)
         logger.info(f"Import row (dry_run={dry_run}): {row}")
-        
+
         import_result = super().import_row(row, instance_loader, **kwargs)
-        
+
         # Log the import result for debugging
-        logger.info(f"Import result: {import_result.import_type}, errors: {import_result.errors}")
-        
+        logger.info(
+            f"Import result: {import_result.import_type}, errors: {import_result.errors}"
+        )
+
         # Add the toponyms to the diff display to show what's being imported
-        if 'Toponyms' in row and row['Toponyms']:
-            import_result.diff.append(row['Toponyms'])
+        if "Toponyms" in row and row["Toponyms"]:
+            import_result.diff.append(row["Toponyms"])
         else:
             import_result.diff.append("")
-        
-        # If we're not in dry run mode and the import was successful, 
+
+        # If we're not in dry run mode and the import was successful,
         # double check that toponyms were properly processed
-        if not dry_run and import_result.import_type not in [import_result.IMPORT_TYPE_ERROR, import_result.IMPORT_TYPE_SKIP]:
+        if not dry_run and import_result.import_type not in [
+            import_result.IMPORT_TYPE_ERROR,
+            import_result.IMPORT_TYPE_SKIP,
+        ]:
             try:
                 # Get the line code instance
                 line_code = LineCode.objects.get(code=row.get("Code"))
-                
+
                 # If there are no toponyms already assigned but we have them in the row,
                 # try to assign them again
                 if not line_code.associated_toponyms.exists() and row.get("Toponyms"):
                     # Split the toponyms string by comma and strip whitespace
                     toponym_list = [t.strip() for t in row.get("Toponyms").split(",")]
-                    
+
                     # Add each toponym to the line code
                     for toponym_id in toponym_list:
                         if not toponym_id:  # Skip empty strings
                             continue
-                            
+
                         try:
                             location = Location.objects.get(placename_id=toponym_id)
                             line_code.associated_toponyms.add(location)
-                            logger.info(f"Added toponym {toponym_id} to line code {line_code.code} in double-check")
+                            logger.info(
+                                f"Added toponym {toponym_id} to line code {line_code.code} in double-check"
+                            )
                         except Location.DoesNotExist:
-                            logger.warning(f"Toponym {toponym_id} not found for line code {line_code.code}")
-            
+                            logger.warning(
+                                f"Toponym {toponym_id} not found for line code {line_code.code}"
+                            )
+
             except Exception as e:
-                logger.error(f"Error in import_row double-check for {row.get('Code')}: {str(e)}", exc_info=True)
-        
+                logger.error(
+                    f"Error in import_row double-check for {row.get('Code')}: {str(e)}",
+                    exc_info=True,
+                )
+
         return import_result
-        
+
     def get_diff_headers(self):
         """Define headers for the diff display"""
         return ["Code", "Toponyms"]

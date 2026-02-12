@@ -6,15 +6,13 @@ from collections import defaultdict
 from html import unescape
 
 from django.urls import reverse
-import requests
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.staticfiles import finders
-from django.core.cache import cache
-from django.db.models import Exists, OuterRef, Q, Prefetch
-from django.http import HttpRequest, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.db.models import Exists, Func, OuterRef, Q, Value
+from django.db.models.functions import Replace, Lower
+from django.http import Http404, HttpRequest, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
-from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import DetailView
@@ -22,7 +20,7 @@ from rest_framework import viewsets
 
 from gallery.models import GalleryIndexPage
 from manuscript.models import (
-    Folio,
+    Library,
     Location,
     LocationAlias,
     SingleManuscript,
@@ -31,27 +29,27 @@ from manuscript.models import (
     line_code_to_numeric,
 )
 from manuscript.serializers import SingleManuscriptSerializer, ToponymSerializer
-from pages.models import AboutPage, SitePage
+from pages.models import AboutPage, ManuscriptsIntroduction, SitePage
 from textannotation.models import CrossReference, EditorialNote, TextualVariant
 
 logger = logging.getLogger(__name__)
 
 
-def get_manifest_data(manifest_url):
-    """Fetch and cache IIIF manifest data."""
-    cache_key = f"iiif_manifest_{manifest_url}"
-    cached_data = cache.get(cache_key)
+def get_annotation_map(model_class, stanzas, ct_id, note_type, manuscript=None):
+    annotations_qs = model_class.objects.filter(
+        content_type_id=ct_id, object_id__in=stanzas
+    )
+    if note_type == "variant":
+        annotations_qs = annotations_qs.filter(manuscript=manuscript)
+    annotations = annotations_qs.values(
+        "id", "object_id", "annotation", "from_pos", "to_pos", "selected_text"
+    )
 
-    if cached_data:
-        return cached_data
-
-    # Fetch and cache for 24 hours if not in cache
-    response = requests.get(manifest_url)
-    response.raise_for_status()
-    manifest_data = response.json()
-    cache.set(cache_key, manifest_data, 60 * 60 * 24)
-
-    return manifest_data
+    mapping = defaultdict(list)
+    for annotation in annotations:
+        annotation["annotation_type"] = note_type
+        mapping[annotation["object_id"]].append(annotation)
+    return mapping
 
 
 def manuscript_stanzas(request, siglum):
@@ -61,42 +59,58 @@ def manuscript_stanzas(request, siglum):
 
     # Get all folios for this manuscript
     folios = manuscript.folio_set.all().order_by("folio_number")
-    logger.info(f"Found {folios.count()} folios for manuscript {siglum}")
 
-    stanzas = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
-
-    # Prefetch for efficiency
-    stanzas = stanzas.prefetch_related(
-        "folios",
-        "editorial_notes",
-        "cross_references",
-        Prefetch(
-            "textual_variants",
-            queryset=TextualVariant.objects.filter(
-                manuscript=manuscript
-            ).select_related("manuscript"),
-        ),
+    stanzas_qs = Stanza.objects.exclude(stanza_line_code_starts__isnull=True)
+    stanzas = list(
+        stanzas_qs.values("id", "stanza_line_code_starts", "stanza_text", "is_rubric")
     )
-    logger.info(f"Found {stanzas.count()} total stanzas")
+    stanza_ct_id = ContentType.objects.get_for_model(Stanza).id
+
+    editorial_map = get_annotation_map(EditorialNote, stanzas_qs, stanza_ct_id, "note")
+    reference_map = get_annotation_map(
+        CrossReference, stanzas_qs, stanza_ct_id, "reference"
+    )
+    variant_map = get_annotation_map(
+        TextualVariant, stanzas_qs, stanza_ct_id, "variant", manuscript
+    )
+    for s in stanzas:
+        combined = (
+            editorial_map[s["id"]] + reference_map[s["id"]] + variant_map[s["id"]]
+        )
+        s["annotations"] = combined
 
     # Get translated stanzas for all stanzas
-    translated_stanzas = StanzaTranslated.objects.filter(stanza__in=stanzas).distinct()
-    translated_stanzas = translated_stanzas.prefetch_related(
-        "editorial_notes",
-        "cross_references",
-        Prefetch(
-            "textual_variants",
-            queryset=TextualVariant.objects.filter(
-                manuscript=manuscript
-            ).select_related("manuscript"),
-        ),
+    translated_stanzas = (
+        StanzaTranslated.objects.filter(stanza__in=stanzas_qs)
+        .distinct()
+        .values(
+            "id", "stanza_id", "stanza_text", "stanza_line_code_starts", "is_rubric"
+        )
     )
-    logger.info(f"Found {translated_stanzas.count()} translated stanzas")
+    translated_stanza_ids = [s["id"] for s in translated_stanzas]
+    translated_stanza_ct_id = ContentType.objects.get_for_model(StanzaTranslated).id
+    tr_editorial_map = get_annotation_map(
+        EditorialNote, translated_stanza_ids, translated_stanza_ct_id, "note"
+    )
+    tr_reference_map = get_annotation_map(
+        CrossReference, translated_stanza_ids, translated_stanza_ct_id, "reference"
+    )
+    tr_variant_map = get_annotation_map(
+        TextualVariant, translated_stanza_ids, translated_stanza_ct_id, "variant"
+    )
+    for s in translated_stanzas:
+        combined = (
+            tr_editorial_map[s["id"]]
+            + tr_reference_map[s["id"]]
+            + tr_variant_map[s["id"]]
+        )
+        s["annotations"] = combined
 
     # Process stanzas into books structure
-    books = process_stanzas(stanzas)
-    translated_books = process_stanzas(translated_stanzas, is_translated=True)
-    logger.info(f"Processed stanzas into {len(books)} books")
+    books = process_stanzas(stanzas, is_dict=True)
+    translated_books = process_stanzas(
+        translated_stanzas, is_translated=True, is_dict=True
+    )
 
     # Build paired books structure (will be sorted by book number)
     paired_books = {}
@@ -160,7 +174,7 @@ def manuscript_stanzas(request, siglum):
             if translated_stanza_group:
                 translated_stanza_group = sorted(
                     translated_stanza_group,
-                    key=lambda s: line_code_to_numeric(s.stanza_line_code_starts),
+                    key=lambda s: line_code_to_numeric(s["stanza_line_code_starts"]),
                 )
 
             # Create the stanza group - we'll show all stanzas for now
@@ -173,18 +187,15 @@ def manuscript_stanzas(request, siglum):
             # If we have a folio mapping, try to add folio information
             if has_folio_mapping and original_stanzas:
                 first_stanza = original_stanzas[0]
-                if first_stanza.stanza_line_code_starts:
+                if first_stanza["stanza_line_code_starts"]:
                     try:
                         stanza_code = line_code_to_numeric(
-                            first_stanza.stanza_line_code_starts
+                            first_stanza["stanza_line_code_starts"]
                         )
                         if stanza_code in line_code_to_folio:
                             matching_folio = line_code_to_folio[stanza_code]
 
                             # If this is a new folio, mark it in the stanza group
-                            existing_folio_ids = {
-                                f.id for f in first_stanza.folios.all()
-                            }
                             if current_folio is None or matching_folio != current_folio:
                                 current_folio = matching_folio
                                 stanza_group["new_folio"] = True
@@ -192,10 +203,6 @@ def manuscript_stanzas(request, siglum):
                                 logger.info(
                                     f"New folio for stanza {stanza_number}: {current_folio.folio_number}"
                                 )
-
-                                # Associate the stanza with this folio if not already done
-                                if matching_folio.id not in existing_folio_ids:
-                                    first_stanza.folios.add(matching_folio)
                     except Exception as e:
                         logger.warning(
                             f"Error determining folio for stanza {first_stanza.id}: {e}"
@@ -412,14 +419,18 @@ def get_annotation(request, annotation_type, annotation_id):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-def process_stanzas(stanzas, is_translated=False):
+def process_stanzas(stanzas, is_translated=False, is_dict=False):
     books = defaultdict(lambda: defaultdict(list))
     for stanza in stanzas:
-        book_number = int(stanza.stanza_line_code_starts.split(".")[0])
-        stanza_number = int(stanza.stanza_line_code_starts.split(".")[1])
-
-        if is_translated:
-            stanza.unescaped_stanza_text = unescape(stanza.stanza_text)
+        slcs = (
+            stanza["stanza_line_code_starts"]
+            if is_dict
+            else stanza.stanza_line_code_starts
+        )
+        book_number = int(slcs.split(".")[0])
+        stanza_number = int(slcs.split(".")[1])
+        if is_dict:
+            stanza["unescaped_stanza_text"] = unescape(stanza["stanza_text"])
         else:
             stanza.unescaped_stanza_text = unescape(stanza.stanza_text)
 
@@ -427,7 +438,7 @@ def process_stanzas(stanzas, is_translated=False):
 
         # Sort stanzas within each stanza number by line code for proper ordering
         books[book_number][stanza_number].sort(
-            key=lambda s: line_code_to_numeric(s.stanza_line_code_starts)
+            key=lambda s: line_code_to_numeric(s["stanza_line_code_starts"])
         )
 
     # Return books with keys sorted by book number
@@ -494,155 +505,6 @@ def index(request: HttpRequest):
     return render(request, "index.html", context)
 
 
-def mirador_view(request, manuscript_id, page_number):
-    try:
-        manuscript = SingleManuscript.objects.get(id=manuscript_id)
-    except SingleManuscript.DoesNotExist:
-        manuscript = SingleManuscript.objects.get(siglum="Urb1")
-
-    if not manuscript.iiif_url:
-        manuscript = SingleManuscript.objects.get(siglum="Urb1")
-
-    try:
-        get_manifest_data(manuscript.iiif_url)
-    except requests.RequestException:
-        # Fallback to default manuscript if manifest can't be fetched
-        manuscript = SingleManuscript.objects.get(siglum="Urb1")
-
-    return render(
-        request,
-        "manuscript/mirador.html",
-        {
-            "manifest_url": manuscript.iiif_url,
-        },
-    )
-
-
-def get_canvas_url_for_folio(manuscript_manifest, folio):
-    """
-    Find the correct canvas URL from the manifest for a given folio
-    """
-    folio_label = folio.folio_number
-
-    # Find the matching canvas in the manifest
-    for canvas in manuscript_manifest["sequences"][0]["canvases"]:
-        if canvas["label"].lower() == folio_label.lower():
-            return canvas["@id"]
-
-    return None
-
-
-def stanzas(request: HttpRequest):
-    folios = Folio.objects.all()
-    stanzas = (
-        Stanza.objects.prefetch_related(
-            "editorial_notes",
-            "cross_references",
-            Prefetch(
-                "textual_variants",
-                queryset=TextualVariant.objects.select_related("manuscript"),
-            ),
-        )
-        .all()
-        .order_by("stanza_line_code_starts")
-    )
-
-    translated_stanzas = (
-        StanzaTranslated.objects.prefetch_related(
-            "editorial_notes",
-            "cross_references",
-            Prefetch(
-                "textual_variants",
-                queryset=TextualVariant.objects.select_related("manuscript"),
-            ),
-        )
-        .all()
-        .order_by("stanza_line_code_starts")
-    )
-    manuscripts = SingleManuscript.objects.all()
-    default_manuscript = SingleManuscript.objects.get(siglum="Urb1")
-
-    books = process_stanzas(stanzas)
-    translated_books = process_stanzas(translated_stanzas)
-
-    # Group stanzas by folio within each book
-    paired_books = {}
-    for book_number, stanza_dict in sorted(books.items()):  # Sort by book number
-        paired_books[book_number] = []
-        current_folio = None
-
-        for stanza_number, original_stanzas in stanza_dict.items():
-            # Get corresponding translated stanzas
-            translated_stanza_group = translated_books.get(book_number, {}).get(
-                stanza_number, []
-            )
-
-            # If we can't find translations by line code, try using the FK relationship
-            if not translated_stanza_group and original_stanzas:
-                original_ids = [s.id for s in original_stanzas]
-                linked_translations = [
-                    ts for ts in translated_stanzas if ts.stanza_id in original_ids
-                ]
-                if linked_translations:
-                    translated_stanza_group = linked_translations
-
-            # Ensure translations are always sorted by line code
-            if translated_stanza_group:
-                translated_stanza_group = sorted(
-                    translated_stanza_group,
-                    key=lambda s: line_code_to_numeric(s.stanza_line_code_starts),
-                )
-
-            # Add folio information
-            stanza_group = {
-                "original": original_stanzas,
-                "translated": translated_stanza_group,
-            }
-
-            # Check if this is a new folio by looking at the first stanza's folios
-            if original_stanzas:
-                # Get the first stanza's folios ordered by folio_number
-                stanza_folios = sorted(
-                    original_stanzas[0].folios.all(), key=lambda f: f.folio_number
-                )
-
-                # If the stanza has any folios and the current folio has changed
-                if stanza_folios and (
-                    current_folio is None or stanza_folios[0] != current_folio
-                ):
-                    current_folio = stanza_folios[0]
-                    stanza_group["new_folio"] = True
-                    stanza_group["show_viewer"] = (
-                        True  # Only show viewer for new folios
-                    )
-                    # Optionally add information about all folios this stanza appears on
-                    stanza_group["folios"] = [f.folio_number for f in stanza_folios]
-                else:
-                    stanza_group["new_folio"] = False
-
-            paired_books[book_number].append(stanza_group)
-
-    manuscript_data = {
-        "iiif_url": (
-            default_manuscript.iiif_url
-            if hasattr(default_manuscript, "iiif_url")
-            else None
-        )
-    }
-
-    return render(
-        request,
-        "stanzas.html",
-        {
-            "paired_books": paired_books,
-            "manuscripts": manuscripts,
-            "default_manuscript": default_manuscript,
-            "manuscript": manuscript_data,
-            "folios": folios,
-        },
-    )
-
-
 class ManuscriptViewer(DetailView):
     model = Stanza
     template_name = "manuscript/viewer.html"
@@ -681,96 +543,47 @@ class ManuscriptViewer(DetailView):
 
 
 def manuscripts(request: HttpRequest):
-    """View for displaying all manuscripts with proper folio grouping"""
-    folios = Folio.objects.all()
-    stanzas = (
-        Stanza.objects.prefetch_related(
-            "folios", "editorial_notes", "cross_references", "textual_variants"
-        )
-        .all()
-        .order_by("stanza_line_code_starts")
+    """View for displaying all manuscripts as a list"""
+
+    # optimization: use values() and list
+    manuscripts = list(
+        SingleManuscript.objects.values("id", "shelfmark", "siglum", "library")
     )
+    libraries = Library.objects.values("id", "city", "library")
+    library_id_map = {library["id"]: library for library in libraries}
 
-    # Remove the translated stanzas
-    manuscripts = SingleManuscript.objects.all()
-    default_manuscript = SingleManuscript.objects.get(siglum="Urb1")
-
-    # Process stanzas into books structure (same as in stanzas view)
-    books = defaultdict(lambda: defaultdict(list))
-    for stanza in stanzas:
-        if stanza.stanza_line_code_starts:
-            parts = stanza.stanza_line_code_starts.split(".")
-            if len(parts) >= 2:
-                book_number = int(parts[0])
-                stanza_number = int(parts[1])
-
-                # Process text for display
-                if hasattr(stanza, "stanza_text"):
-                    stanza.unescaped_stanza_text = unescape(stanza.stanza_text)
-
-                books[book_number][stanza_number].append(stanza)
-
-    # Group stanzas by book and track folios - using same approach as stanzas view
-    paired_books = {}
-    for book_number, stanza_dict in sorted(books.items()):  # Sort by book number
-        paired_books[book_number] = []
-        current_folio = None
-
-        # Sort stanza numbers to ensure correct order
-        stanza_numbers = sorted(stanza_dict.keys())
-
-        for stanza_number in stanza_numbers:
-            original_stanzas = stanza_dict[stanza_number]
-
-            # Create a stanza pair dictionary with just original stanzas
-            stanza_pair = {
-                "original": original_stanzas,
-                "new_folio": False,
-            }
-
-            # Check if this is a new folio by looking at the first stanza's folios
-            if original_stanzas:
-                # Get the first stanza's folios ordered by folio_number
-                stanza_folios = sorted(
-                    original_stanzas[0].folios.all(), key=lambda f: f.folio_number
-                )
-
-                # If the stanza has any folios and the current folio has changed
-                if stanza_folios and (
-                    current_folio is None or stanza_folios[0] != current_folio
-                ):
-                    current_folio = stanza_folios[0]
-                    stanza_pair["new_folio"] = True
-                    # Add information about all folios this stanza appears on
-                    stanza_pair["folios"] = [f.folio_number for f in stanza_folios]
-
-            paired_books[book_number].append(stanza_pair)
-
-    manuscript_data = {
-        "iiif_url": (
-            default_manuscript.iiif_url
-            if hasattr(default_manuscript, "iiif_url")
-            else None
-        )
-    }
+    for manuscript in manuscripts:
+        library_id = manuscript["library"]
+        library = library_id_map.get(library_id)
+        if library:
+            # format as e.g. "Yale3 (New Haven, Yale, Beinecke 946)""
+            library_fmt = ", ".join(
+                [part for part in [library["city"], library["library"]] if part]
+            )
+            manuscript["shelfmark_fmt"] = "%s (%s, %s)" % (
+                manuscript["siglum"] or "[no siglum]",
+                library_fmt,
+                manuscript["shelfmark"],
+            )
 
     return render(
         request,
         "manuscripts.html",
         {
-            "stanza_pairs": paired_books,
             "manuscripts": manuscripts,
-            "default_manuscript": default_manuscript,
-            "manuscript": manuscript_data,
-            "folios": folios,
+            "snippet": ManuscriptsIntroduction.objects.first(),
         },
     )
 
 
 def manuscript(request: HttpRequest, siglum: str):
     get_manuscript = get_object_or_404(
-        SingleManuscript.objects.select_related("library").prefetch_related(
-            "codex_set", "textdecoration_set", "editorialstatus_set"
+        SingleManuscript.objects.select_related("library")
+        .prefetch_related("codex_set", "textdecoration_set", "editorialstatus_set")
+        .annotate(
+            has_variants=Exists(
+                TextualVariant.objects.filter(manuscript=OuterRef("pk"))
+            )
         ),
         siglum=siglum,
     )
@@ -836,54 +649,59 @@ def manuscript(request: HttpRequest, siglum: str):
         {
             "manuscript": get_manuscript,
             "folios": folios,
-            "iiif_manifest": get_manuscript.iiif_url,
         },
     )
 
 
-# Add this utility function to generate toponym slugs consistently
-def get_toponym_slug(toponym_name):
-    """Generate a slug from a toponym name"""
-    return slugify(toponym_name)
+class RegexpReplace(Func):
+    """Custom function to allow regex replacement via postgres"""
+
+    function = "REGEXP_REPLACE"
+    template = "%(function)s(%(expressions)s, 'g')"
+
+
+def db_slug(field_name):
+    """Slugify a database lookup using only db functions"""
+    # Remove non-alphanumeric/non-space characters
+    stripped = RegexpReplace(Lower(field_name), Value(r"[^a-z0-9 -]"), Value(""))
+    # Replace spaces with hyphens
+    slugified = Replace(stripped, Value(" "), Value("-"))
+    # Collapse multiple hyphens into one
+    return RegexpReplace(slugified, Value(r"-+"), Value("-"))
 
 
 def toponym_by_slug(request: HttpRequest, toponym_slug: str):
     """View a toponym by its slugified name"""
     # Try to find the toponym based on slugified name
-    location = None
-
-    # First try to find by name
-    locations = Location.objects.all()
-    for loc in locations:
-        if slugify(loc.name) == toponym_slug:
-            location = loc
-            break
+    location = Location.objects.filter(slug=toponym_slug).first()
 
     # If not found by name, check aliases
-    if location is None:
-        aliases = LocationAlias.objects.all()
-        for alias in aliases:
+    if not location:
+        alias = (
             # Check all the possible name fields
-            name_fields = [
-                alias.placename_from_mss,
-                alias.placename_standardized,
-                alias.placename_modern,
-                alias.placename_alias,
-                alias.placename_ancient,
-            ]
+            LocationAlias.objects.annotate(
+                slug_mss=db_slug("placename_from_mss"),
+                slug_standardized=db_slug("placename_standardized"),
+                slug_modern=db_slug("placename_modern"),
+                slug_alias=db_slug("placename_alias"),
+                slug_ancient=db_slug("placename_ancient"),
+            )
+            .filter(
+                Q(slug_mss=toponym_slug)
+                | Q(slug_standardized=toponym_slug)
+                | Q(slug_modern=toponym_slug)
+                | Q(slug_alias=toponym_slug)
+                | Q(slug_ancient=toponym_slug)
+            )
+            .select_related("location")
+            .first()
+        )
+        if alias:
+            # Alias slug is not canonical, so redirect to canonical url
+            return redirect(alias.location.get_absolute_url())
 
-            for name in name_fields:
-                if name and slugify(name) == toponym_slug:
-                    location = alias.location
-                    break
-
-            if location:
-                break
-
-    if location is None:
+    if not location:
         # If still not found, return 404
-        from django.http import Http404
-
         raise Http404(f"No toponym found with slug: {toponym_slug}")
 
     # Redirect to existing view using placename_id
@@ -921,10 +739,6 @@ def toponym(request: HttpRequest, placename_id: str):
 
     iiif_urls = dict(manuscripts_with_iiif)
 
-    iiif_manifest = {
-        siglum: get_manifest_data(url) for siglum, url in manuscripts_with_iiif
-    }
-
     # First get aliases with related data
     aliases = filtered_toponym.locationalias_set.all().prefetch_related(
         "manuscripts", "folios"
@@ -933,14 +747,17 @@ def toponym(request: HttpRequest, placename_id: str):
     # Then process aggregations
     aggregated_aliases = {
         "name": filtered_toponym.name,
-        "aliases": [
-            {
-                "placename_alias": alias.placename_alias,
-                "manuscripts": alias.manuscripts.all(),
-                "folios": alias.folios.all(),
-            }
-            for alias in aliases
-        ],
+        "aliases": sorted(
+            [
+                {
+                    "placename_alias": alias.placename_alias,
+                    "manuscripts": alias.manuscripts.all(),
+                    "folios": alias.folios.all(),
+                }
+                for alias in aliases
+            ],
+            key=lambda x: (x["placename_alias"] or "").lower(),
+        ),
         "placename_moderns": [],
         "placename_standardizeds": [],
         "placename_from_msss": [],
@@ -951,19 +768,27 @@ def toponym(request: HttpRequest, placename_id: str):
     for alias in aliases:
         if alias.placename_modern:
             aggregated_aliases["placename_moderns"].extend(
-                name.strip() for name in alias.placename_modern.split(",")
+                name.strip()
+                for name in alias.placename_modern.split(",")
+                if name.strip() != "N/A"
             )
         if alias.placename_standardized:
             aggregated_aliases["placename_standardizeds"].extend(
-                name.strip() for name in alias.placename_standardized.split(",")
+                name.strip()
+                for name in alias.placename_standardized.split(",")
+                if name.strip() != "N/A"
             )
         if alias.placename_from_mss:
             aggregated_aliases["placename_from_msss"].extend(
-                name.strip() for name in alias.placename_from_mss.split(",")
+                name.strip()
+                for name in alias.placename_from_mss.split(",")
+                if name.strip() != "N/A"
             )
         if alias.placename_ancient:
             aggregated_aliases["placename_ancients"].extend(
-                name.strip() for name in alias.placename_ancient.split(",")
+                name.strip()
+                for name in alias.placename_ancient.split(",")
+                if name.strip() != "N/A"
             )
 
     # After aliases are processed, then handle IIIF URLs and manifests
@@ -972,21 +797,23 @@ def toponym(request: HttpRequest, placename_id: str):
     ).values_list("siglum", "iiif_url")
 
     iiif_urls = dict(manuscripts_with_iiif)
-    iiif_manifest = {
-        siglum: get_manifest_data(url) for siglum, url in manuscripts_with_iiif
-    }
 
     # Process line codes
     line_codes = [{"line_code": lc.code} for lc in filtered_linecodes]
+
+    # build permalink and citation
+    permalink = request.build_absolute_uri(filtered_toponym.get_absolute_url())
+    citation = filtered_toponym.get_citation(permalink)
 
     context = {
         "toponym": filtered_toponym,
         "manuscripts": filtered_manuscripts,
         "aggregated_aliases": aggregated_aliases,
         "folios": filtered_folios,
-        "iiif_manifest": iiif_manifest,
         "iiif_urls": iiif_urls,
         "line_codes": line_codes,
+        "permalink": permalink,
+        "citation": citation,
     }
 
     return render(request, "gazetteer/gazetteer_single.html", context)

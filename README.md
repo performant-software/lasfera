@@ -7,7 +7,7 @@ A Django-based digital humanities application for analyzing and presenting manus
 - **Manuscript Management**: Track and compare textual variations across multiple manuscript sources
 - **Line Code System**: Hierarchical numbering system for precise text referencing (Book.Stanza.Line format)
 - **Translation Support**: Multi-language manuscript versions with variant tracking
-- **Image Viewer**: Integrated Mirador viewer for manuscript images
+- **Image Viewer**: Integrated Tify viewer for manuscript images
 - **Geographic Data**: Location tracking for manuscript origins and holdings
 - **Content Management**: Wagtail CMS for managing static pages and content
 

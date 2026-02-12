@@ -2,6 +2,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
+from django.views.generic.base import TemplateView
 from django.urls import include, path
 from wagtail import urls as wagtail_urls
 from wagtail.admin import urls as wagtailadmin_urls
@@ -19,8 +20,12 @@ urlpatterns = [
     path("prose/", include("prose.urls")),
     path("gallery/", include("gallery.urls", namespace="gallery")),
     path("cms/", include(wagtailadmin_urls)),
-    path("", include(wagtail_urls)),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path("dmca/", TemplateView.as_view(template_name="dmca.html"), name="dmca"),
+]
 
 if settings.DEBUG:
     urlpatterns += [path("__reload__/", include("django_browser_reload.urls"))]
+
+urlpatterns += [
+    path("", include(wagtail_urls)),
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

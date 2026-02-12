@@ -40,7 +40,7 @@ The heart of the application, handling manuscript data and textual variants.
 - Line code validation and parsing
 - Manuscript-to-manuscript variation tracking
 - Multi-language support for translations
-- Mirador viewer integration for manuscript images
+- Tify viewer integration for manuscript images
 
 accounts/
 ---------
@@ -118,7 +118,7 @@ Static Assets
 - Tailwind CSS for styling
 - FontAwesome icons
 - Custom JavaScript for interactive features
-- Mirador viewer for manuscript images
+- Tify viewer for manuscript images
 
 Development Workflow
 ====================

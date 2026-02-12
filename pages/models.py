@@ -37,3 +37,17 @@ class HomeIntroduction(models.Model):
 
     def __str__(self):
         return self.title
+
+
+@register_snippet
+class ManuscriptsIntroduction(models.Model):
+    title = models.CharField(max_length=255)
+    body = RichTextField()
+
+    panels = [
+        FieldPanel("title"),
+        FieldPanel("body"),
+    ]
+
+    def __str__(self):
+        return self.title
