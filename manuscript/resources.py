@@ -1,11 +1,8 @@
 from import_export import resources, fields, widgets
 from import_export.widgets import ForeignKeyWidget
 from import_export.results import RowResult
-from django.contrib import admin
-from django.db import IntegrityError
-from django.core.exceptions import ValidationError
+from django.contrib import messages
 from django.db.models import Q
-from typing import Optional, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -203,9 +200,13 @@ class LocationResource(resources.ModelResource):
     authority_file = fields.Field(column_name="WHG_Link", attribute="authority_file")
     modern_country = fields.Field(column_name="Country", attribute="modern_country")
     description = fields.Field(column_name="Toponym_Text", attribute="description")
+    mod_name = fields.Field(column_name="Mod_Name", attribute="Mod_Name", readonly=True)
+    anc_name = fields.Field(column_name="Anc_Name", attribute="Anc_Name", readonly=True)
+    ex_name = fields.Field(column_name="Ex_Name", attribute="Ex_Name", readonly=True)
 
     def before_import(self, dataset, **kwargs):
         """Clean the dataset if double headers are detected."""
+        self.aliases_created = 0
         if len(dataset) > 0:
             # detect if the first header is the descriptive title row
             first_header = str(dataset.headers[0]) if dataset.headers else ""
@@ -222,45 +223,94 @@ class LocationResource(resources.ModelResource):
             if isinstance(row[key], str) and row[key].strip() in null_strings:
                 row[key] = None
 
+    def get_or_init_instance(self, instance_loader, row):
+        """override to prevent 'update' highlight from showing up for
+        every single instance due to non-model fields"""
+        instance, created = super().get_or_init_instance(instance_loader, row)
+
+        if not created:
+            instance.Mod_Name = row.get("Mod_Name")
+            instance.Anc_Name = row.get("Anc_Name")
+            instance.Ex_Name = row.get("Ex_Name")
+
+        return instance, created
+
+    def import_field(self, field, obj, row, is_m2m=False, **kwargs):
+        """attach the raw values to the python object for non-model fields,
+        so dehydrate can see them"""
+        if field.column_name in ["Mod_Name", "Anc_Name", "Ex_Name"]:
+            setattr(obj, field.column_name, row.get(field.column_name))
+        else:
+            super().import_field(field, obj, row, is_m2m, **kwargs)
+
+    def dehydrate_mod_name(self, instance):
+        return getattr(instance, "Mod_Name", "")
+
+    def dehydrate_anc_name(self, instance):
+        return getattr(instance, "Anc_Name", "")
+
+    def dehydrate_ex_name(self, instance):
+        return getattr(instance, "Ex_Name", "")
+
     def after_import_row(self, row, row_result, **kwargs):
         """Create alias records for modern and ancient names if they exist"""
         # check dry_run to prevent creating LocationAlias records during preview
         dry_run = kwargs.get("dry_run", False)
-        if not dry_run and row_result.import_type in [
-            row_result.IMPORT_TYPE_NEW,
-            row_result.IMPORT_TYPE_UPDATE,
-        ]:
-            try:
-                location = Location.objects.get(placename_id=row.get("Place_ID"))
+        if dry_run:
+            return
+        location = row_result.instance
+        if not location or not location.pk:
+            return
+        try:
+            location = Location.objects.get(placename_id=row.get("Place_ID"))
 
-                # Get the values
-                modern_name = row.get("Mod_Name")
-                ancient_name = row.get("Anc_Name")
-                mss_name = row.get("Ex_Label")
+            # Get the values
+            modern_name = row.get("Mod_Name")
+            ancient_name = row.get("Anc_Name")
+            mss_name = row.get("Ex_Label")
 
-                if modern_name:
-                    LocationAlias.objects.get_or_create(
-                        location=location,
-                        placename_modern=modern_name,
-                    )
+            if modern_name:
+                _, created = LocationAlias.objects.get_or_create(
+                    location=location,
+                    placename_modern=modern_name,
+                )
+                if created:
+                    self.aliases_created += 1
 
-                if ancient_name:
-                    LocationAlias.objects.get_or_create(
-                        location=location,
-                        placename_ancient=ancient_name,
-                    )
+            if ancient_name:
+                _, created = LocationAlias.objects.get_or_create(
+                    location=location,
+                    placename_ancient=ancient_name,
+                )
+                if created:
+                    self.aliases_created += 1
 
-                if mss_name:
-                    LocationAlias.objects.get_or_create(
-                        location=location,
-                        placename_from_mss=mss_name,
-                    )
+            if mss_name:
+                _, created = LocationAlias.objects.get_or_create(
+                    location=location,
+                    placename_from_mss=mss_name,
+                )
+                if created:
+                    self.aliases_created += 1
 
-            except Location.DoesNotExist:
-                pass
-            except Exception as e:
-                logger.error(
-                    f"Error creating alias for {row.get('Place_ID')}: {str(e)}"
+        except Location.DoesNotExist:
+            pass
+        except Exception as e:
+            logger.error(f"Error creating alias for {row.get('Place_ID')}: {str(e)}")
+
+    def after_import(self, dataset, result, **kwargs):
+        """Add custom toponym alias summary to the import result"""
+        if not kwargs.get("dry_run", False):
+            count = getattr(self, "aliases_created", 0)
+            request = kwargs.get("request")
+            if request and count > 0:
+                messages.success(
+                    request,
+                    f"Import successful. In addition to toponyms, {count} new Toponym Aliases were created/linked.",
+                )
+            elif request:
+                messages.info(
+                    request, "Import successful. No new Toponym Aliases were required."
                 )
 
     class Meta:
@@ -272,6 +322,9 @@ class LocationResource(resources.ModelResource):
             "placename_id",
             "name",
             "place_type",
+            "mod_name",
+            "anc_name",
+            "ex_name",
             "latitude",
             "longitude",
             "authority_file",
@@ -287,10 +340,12 @@ class LocationAliasResource(resources.ModelResource):
         widget=ForeignKeyWidget(Location, "placename_id"),
     )
     placename_alias = fields.Field(column_name="Label", attribute="placename_alias")
+    ms_siglum = fields.Field(column_name="MS", readonly=True)
+    folio_number = fields.Field(column_name="Folio", readonly=True)
 
     class Meta:
         model = LocationAlias
-        fields = ("location", "placename_alias")
+        fields = ("location", "placename_alias", "ms_siglum", "folio_number")
         import_id_fields = ["location", "placename_alias"]
         skip_unchanged = True
         report_skipped = True
