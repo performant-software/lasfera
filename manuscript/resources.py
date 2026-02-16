@@ -340,8 +340,8 @@ class LocationAliasResource(resources.ModelResource):
         widget=ForeignKeyWidget(Location, "placename_id"),
     )
     placename_alias = fields.Field(column_name="Label", attribute="placename_alias")
-    ms_siglum = fields.Field(column_name="MS", readonly=True)
-    folio_number = fields.Field(column_name="Folio", readonly=True)
+    ms_siglum = fields.Field(column_name="MS", attribute="ms_siglum", readonly=True)
+    folio_number = fields.Field(column_name="Folio", attribute="folio_number", readonly=True)
 
     class Meta:
         model = LocationAlias
@@ -436,6 +436,22 @@ class LocationAliasResource(resources.ModelResource):
         return LocationAlias.objects.filter(
             location=related_location, placename_alias=label
         ).first()
+
+    def get_or_init_instance(self, instance_loader, row):
+        """override to prevent 'update' highlight from showing up for
+        every single instance due to non-model fields"""
+        instance, created = super().get_or_init_instance(instance_loader, row)
+
+        instance.ms_siglum = row.get("MS")
+        instance.folio_number = row.get("Folio")
+
+        return instance, created
+    
+    def dehydrate_ms_siglum(self, instance):
+        return getattr(instance, "ms_siglum", "")
+
+    def dehydrate_folio_number(self, instance):
+        return getattr(instance, "folio_number", "")
 
     def import_instance(self, instance, row, **kwargs):
         """handle created Location"""
