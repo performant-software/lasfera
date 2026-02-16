@@ -162,7 +162,7 @@
                     <select id="lineCodeDisplay" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
                       <option value="full">Show line codes</option>
                       <option value="shortened">Show shortened line codes</option>
-                      <option value="hidden">Hide line codes</option>
+                      <option value="hidden" selected>Hide line codes</option>
                     </select>
                   </div>
                 </div>
@@ -205,21 +205,19 @@
                     <div class="w-full">
                       {% for stanza in stanza_pair.original %}
                         <div class="relative">
-                          <div class="flex items-start">
-                            <span class="line-code mr-2">
-                              <a class="no-underline scroll-mt-20" 
-                                 href="{% url 'manuscript_stanzas' default_manuscript.siglum %}#{{stanza.stanza_line_code_starts}}"
-                                 id="{{stanza.stanza_line_code_starts}}"
-                                 title="Anchor link to line code {{ stanza.stanza_line_code_starts}}"
-                                 {% with stanza_folio=stanza.folios.all.0 %}
-                                 data-folio="{{ stanza_folio.folio_number }}"
-                                 {% endwith %}
-                                 onclick="navigateToFolio(event, this)">
-                                <span class="font-serif text-red-700 text-sm">
-                                  {{ stanza.stanza_line_code_starts }}
-                                </span>
-                              </a>
-                            </span>
+                          <div class="flex gap-2 items-start">
+                            <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-20" 
+                                href="{% url 'manuscript_stanzas' default_manuscript.siglum %}#{{stanza.stanza_line_code_starts}}"
+                                id="{{stanza.stanza_line_code_starts}}"
+                                title="Anchor link to line code {{ stanza.stanza_line_code_starts}}"
+                                {% with stanza_folio=stanza.folios.all.0 %}
+                                data-folio="{{ stanza_folio.folio_number }}"
+                                {% endwith %}
+                                onclick="navigateToFolio(event, this)">
+                              <span class="line-text font-serif text-red-700 text-sm">
+                                {{ stanza.stanza_line_code_starts }}
+                              </span>
+                            </a>
                             <span class="flex-1 pl-4{% if stanza.is_rubric %} text-xl font-bold{% endif %}">
                               {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
                             </span>
@@ -232,15 +230,13 @@
                     <div class="w-full">
                       {% for stanza in stanza_pair.translated %}
                         <div class="relative">
-                          <div class="flex items-start">
-                            <span class="line-code mr-2">
-                              <a class="no-underline scroll-mt-20" href="#{{stanza.stanza_line_code_starts}}"
-                                 id="{{stanza.stanza_line_code_starts}}">
-                                <span class="font-serif text-red-700 text-sm">
-                                  {{ stanza.stanza_line_code_starts }}
-                                </span>
-                              </a>
-                            </span>
+                          <div class="flex gap-2 items-start">
+                            <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-20" href="#{{stanza.stanza_line_code_starts}}"
+                                id="{{stanza.stanza_line_code_starts}}">
+                              <span class="line-text font-serif text-red-700 text-sm">
+                                {{ stanza.stanza_line_code_starts }}
+                              </span>
+                            </a>
                             <span class="flex-1 pl-4{% if stanza.is_rubric %} text-xl font-bold{% endif %}">
                               {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
                             </span>
