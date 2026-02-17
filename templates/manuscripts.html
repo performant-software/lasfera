@@ -22,6 +22,18 @@
           </p>
         {% endif %}
       </div>
+      <h4 class="text-2xl font-semibold mb-4 text-gray-700">Index of Sigla</h4>
+      <div class="bg-gray-50 p-6 rounded-lg mb-10">
+        <div class="flex flex-wrap gap-2">
+          {% for siglum in sigla_index %}
+            <a href="{% url 'manuscript' siglum %}" 
+              class="text-md text-gray-800 px-2 py-1 bg-white border border-gray-300 rounded-md hover:bg-blue-50 hover:border-blue-300 hover:shadow-md hover:text-blue-700 transition-all">
+              {{ siglum }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+      <h4 class="text-2xl font-semibold mb-4 text-gray-700">Index of Manuscripts</h4>
       <ol class="list-decimal">
         {% for manuscript in manuscripts %}
           <li>

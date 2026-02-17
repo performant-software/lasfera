@@ -565,12 +565,14 @@ def manuscripts(request: HttpRequest):
                 manuscript["shelfmark"],
                 manuscript["siglum"] or "no siglum",
             )
+    sigla = [manuscript["siglum"] for manuscript in manuscripts if manuscript["siglum"]]
 
     return render(
         request,
         "manuscripts.html",
         {
             "manuscripts": sorted(manuscripts, key=lambda m: m["shelfmark_fmt"]),
+            "sigla_index": sorted(sigla),
             "snippet": ManuscriptsIntroduction.objects.first(),
         },
     )
