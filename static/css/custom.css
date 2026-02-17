@@ -100,3 +100,35 @@ note[data-notation] {
     opacity: 0 !important;
   }
 }
+
+/* images in richtextfields */
+.prose .richtext-image {
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 0.5rem;
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1);
+  border: 1px solid rgb(209 213 219);
+}
+.prose .richtext-image.right {
+  float: right;
+  margin: 0rem 1rem 1rem;
+}
+.prose .richtext-image.left {
+  float: left;
+  margin: 0rem 1rem 1rem;
+}
+
+/* heading blocks in streamfields */
+.prose .block-heading {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* videos in streamfields */
+.prose .block-video iframe {
+  max-width: 100%;
+}

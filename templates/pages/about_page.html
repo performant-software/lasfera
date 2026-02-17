@@ -13,7 +13,7 @@
             <div class="grid grid-cols-3 gap-4">
           {# Left Column (2/3) #}
                 <section id="page" class="prose col-span-2">
-                    {{ page.body|richtext }}
+                    {% include_block page.body %}
                 </section>
 
           {# Right Column (1/3) #}
