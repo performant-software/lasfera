@@ -284,27 +284,3 @@ function annotateText(text, annotations) {
     
     return result;
 }
-
-// Function to handle line code display
-function updateLineCodeDisplay(mode) {
-    const lineCodes = document.querySelectorAll('.line-code');
-    lineCodes.forEach(code => {
-        switch(mode) {
-            case 'shortened':
-                // Show only last part of line code (e.g., "01" from "01.01.01")
-                const shortCode = code.textContent.trim().split('.').pop();
-                code.style.display = '';
-                code.querySelector('span').textContent = shortCode;
-                break;
-            case 'hidden':
-                code.style.display = 'none';
-                break;
-            default: // 'full'
-                code.style.display = '';
-                // Restore original line code if needed
-                const originalCode = code.querySelector('a').id;
-                code.querySelector('span').textContent = originalCode;
-        }
-    });
-}
-

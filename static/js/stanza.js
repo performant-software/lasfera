@@ -1,46 +1,25 @@
 // Handle toggling line codes
-document.addEventListener("DOMContentLoaded", (event) => {
+(function() {
   const lineCodeDisplay = document.getElementById("lineCodeDisplay");
   if (lineCodeDisplay) {
-    let originalLineCodes = [];
-    let lineCodesVisible = true;
-
     lineCodeDisplay.addEventListener("change", function () {
-      const lineCodes = document.querySelectorAll(".line-code");
-      const lineCodeLinks = document.querySelectorAll(".line-code a");
-
-      switch (this.value) {
-        case "full":
-          // Show full line codes
-          lineCodes.forEach((code) => (code.style.display = "inline"));
-          if (originalLineCodes.length) {
-            lineCodeLinks.forEach((link, i) => {
-              link.querySelector("span").textContent = originalLineCodes[i];
-            });
-          }
-          break;
-
-        case "shortened":
-          // Show shortened line codes
-          lineCodes.forEach((code) => (code.style.display = "inline"));
-          lineCodeLinks.forEach((link, i) => {
-            const span = link.querySelector("span");
-            if (!originalLineCodes[i]) {
-              originalLineCodes[i] = span.textContent;
-            }
-            const parts = span.textContent.split(".");
-            span.textContent = parseInt(parts[parts.length - 1]);
-          });
-          break;
-
-        case "hidden":
-          // Hide line codes
-          lineCodes.forEach((code) => (code.style.display = "none"));
-          break;
-      }
+      const mode = this.value; // "hidden", "shortened", or "full"
+      updateLineCodeDisplay(mode, this);
     });
   }
-});
+  const handleHash = () => {
+    const hash = window.location.hash;
+    if (hash) {
+      const id = decodeURIComponent(hash.substring(1));
+      const target = document.getElementById(id);
+      if (target) {
+        this.updateLineCodeDisplay("full", lineCodeDisplay);
+      }
+    }
+  };
+  window.addEventListener("hashchange", handleHash);
+  handleHash();
+})();
 
 // Return to top button
 window.addEventListener("scroll", function () {
@@ -62,25 +41,28 @@ window.addEventListener("scroll", function () {
   }
 });
 
-// Function to update the line code display
-function updateLineCodeDisplay(mode) {
-  const lineCodes = document.querySelectorAll('.line-code');
-  lineCodes.forEach(code => {
-    switch(mode) {
-      case 'shortened':
-        // Show only last part of line code (e.g., "01" from "01.01.01")
-        const shortCode = code.textContent.trim().split('.').pop();
-        code.style.display = '';
-        code.querySelector('span').textContent = shortCode;
-        break;
-      case 'hidden':
-        code.style.display = 'none';
-        break;
-      default: // 'full'
-        code.style.display = '';
-        // Restore original line code if needed
-        const originalCode = code.querySelector('a').id;
-        code.querySelector('span').textContent = originalCode;
+function updateLineCodeDisplay(mode, selectElement) {
+  const lineCodeLinks = document.querySelectorAll("a.line-code");
+  lineCodeLinks.forEach((a) => {
+    const span = a.querySelector(".line-text");
+    const fullCode = a.id;
+
+    if (mode === "shortened") {
+      // Show only last part of line code (e.g., "1" from "01.01.01")
+      const parts = fullCode.split(".");
+      span.textContent = parseInt(parts[parts.length - 1]);
+    } else {
+      span.textContent = fullCode;
+    }
+
+    if (mode === "hidden") {
+      // Hide line codes
+      a.classList.add("sr-only");
+    } else {
+      a.classList.remove("sr-only");
     }
   });
+  if (selectElement && mode) {
+    selectElement.value = mode;
+  }
 }

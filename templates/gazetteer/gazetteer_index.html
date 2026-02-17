@@ -64,8 +64,8 @@
                                 return;
                             }
 
-                            const ms_alias = toponym.aliases[0].placename_from_mss;
-                            const modern_alias = toponym.aliases[0].placename_modern;
+                            const ms_alias = toponym.aliases?.length ? toponym.aliases[0].placename_from_mss : null;
+                            const modern_alias = toponym.aliases?.length ? toponym.aliases[0]?.placename_modern : null;
                             const circleMarker = L.circleMarker([toponym.latitude, toponym.longitude], {
                                 radius: 6,
                                 color: 'none',
