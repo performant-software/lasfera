@@ -560,17 +560,19 @@ def manuscripts(request: HttpRequest):
             library_fmt = ", ".join(
                 [part for part in [library["city"], library["library"]] if part]
             )
-            manuscript["shelfmark_fmt"] = "%s (%s, %s)" % (
-                manuscript["siglum"] or "[no siglum]",
+            manuscript["shelfmark_fmt"] = "%s, %s (%s)" % (
                 library_fmt,
                 manuscript["shelfmark"],
+                manuscript["siglum"] or "no siglum",
             )
+    sigla = [manuscript["siglum"] for manuscript in manuscripts if manuscript["siglum"]]
 
     return render(
         request,
         "manuscripts.html",
         {
-            "manuscripts": manuscripts,
+            "manuscripts": sorted(manuscripts, key=lambda m: m["shelfmark_fmt"]),
+            "sigla_index": sorted(sigla),
             "snippet": ManuscriptsIntroduction.objects.first(),
         },
     )
