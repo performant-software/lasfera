@@ -58,8 +58,4 @@ class Migration(migrations.Migration):
             model_name="locationalias",
             name="placename_standardized",
         ),
-        migrations.AlterUniqueTogether(
-            name="locationalias",
-            unique_together={("location", "placename_alias", "manuscript", "folio")},
-        ),
     ]
