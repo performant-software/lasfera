@@ -388,9 +388,9 @@ class LocationAdmin(ImportExportModelAdmin):
         "placename_id",
         "name",
         "get_placename_modern",
+        "get_placename_ancient",
         "toponym_type",
         "place_type",
-        "get_related_folios",
         "slug",
         "id",
     )
@@ -403,19 +403,20 @@ class LocationAdmin(ImportExportModelAdmin):
 
     description_html.short_description = "Description"
 
-    def get_related_folios(self, obj):
-        return ", ".join([str(folio.folio_number) for folio in obj.folio_set.all()])
-
-    get_related_folios.short_description = "Related folio"
-
     def get_placename_modern(self, obj):
         # use prefetched LocationAlias set
-        alias = (
-            obj.locationalias_set.all()[0] if obj.locationalias_set.exists() else None
-        )
-        return alias.placename_modern if alias else None
+        aliases = obj.locationalias_set.all()
+        names = [a.placename_modern for a in aliases if a.placename_modern]
+        return ", ".join(set(names)) if names else "-"
 
     get_placename_modern.short_description = "Modern Placename"
+
+    def get_placename_ancient(self, obj):
+        aliases = obj.locationalias_set.all()
+        names = [a.placename_ancient for a in aliases if a.placename_ancient]
+        return ", ".join(set(names)) if names else "-"
+
+    get_placename_ancient.short_description = "Ancient Placename"
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
