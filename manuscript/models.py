@@ -971,7 +971,6 @@ class LocationAlias(models.Model):
     class Meta:
         verbose_name = "Toponym Alias"
         verbose_name_plural = "Toponym Aliases"
-        unique_together = ["location", "placename_alias", "manuscript", "folio"]
 
     def __str__(self) -> str:
         str_name = (
