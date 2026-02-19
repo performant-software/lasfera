@@ -563,7 +563,12 @@ def manuscripts(request: HttpRequest):
             )
             manuscript["shelfmark_fmt"] = "%s, %s (%s)" % (
                 library_fmt,
-                manuscript["shelfmark"],
+                manuscript["shelfmark"] or "no shelfmark",
+                manuscript["siglum"] or "no siglum",
+            )
+        else:
+            manuscript["shelfmark_fmt"] = "%s (%s)" % (
+                manuscript["shelfmark"] or "no shelfmark",
                 manuscript["siglum"] or "no siglum",
             )
     sigla = [manuscript["siglum"] for manuscript in manuscripts if manuscript["siglum"]]
