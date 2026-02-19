@@ -108,7 +108,7 @@ class CodexInline(admin.StackedInline):
 class LocationAliasInline(admin.TabularInline):
     model = LocationAlias
     extra = 1
-    autocomplete_fields = ("manuscripts", "folios")
+    autocomplete_fields = ("manuscript", "folio")
 
 
 class AuthorityFileInline(admin.TabularInline):
@@ -388,7 +388,6 @@ class LocationAdmin(ImportExportModelAdmin):
         "placename_id",
         "name",
         "get_placename_modern",
-        "get_mss_placename",
         "toponym_type",
         "place_type",
         "get_related_folios",
@@ -418,14 +417,6 @@ class LocationAdmin(ImportExportModelAdmin):
 
     get_placename_modern.short_description = "Modern Placename"
 
-    def get_mss_placename(self, obj):
-        alias = (
-            obj.locationalias_set.all()[0] if obj.locationalias_set.exists() else None
-        )
-        return alias.placename_from_mss if alias else None
-
-    get_mss_placename.short_description = "Manuscript Placename"
-
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         instance = form.instance
@@ -447,9 +438,8 @@ class LocationAliasAdmin(ImportExportModelAdmin):
     list_display = (
         "location",
         "placename_alias",
-        "placename_from_mss",
         "placename_ancient",
-        "placename_standardized",
+        "placename_modern",
     )
     list_filter = ("location",)
     search_fields = ("placename_alias",)

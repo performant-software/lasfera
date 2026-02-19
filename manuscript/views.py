@@ -628,7 +628,6 @@ def manuscript(request: HttpRequest, siglum: str):
             primary_alias = location_aliases.filter(location=location).first()
             display_name = (
                 primary_alias.placename_modern
-                or primary_alias.placename_from_mss
                 or location.name
                 or location.modern_country
                 or ""
@@ -682,16 +681,12 @@ def toponym_by_slug(request: HttpRequest, toponym_slug: str):
         alias = (
             # Check all the possible name fields
             LocationAlias.objects.annotate(
-                slug_mss=db_slug("placename_from_mss"),
-                slug_standardized=db_slug("placename_standardized"),
                 slug_modern=db_slug("placename_modern"),
                 slug_alias=db_slug("placename_alias"),
                 slug_ancient=db_slug("placename_ancient"),
             )
             .filter(
-                Q(slug_mss=toponym_slug)
-                | Q(slug_standardized=toponym_slug)
-                | Q(slug_modern=toponym_slug)
+                Q(slug_modern=toponym_slug)
                 | Q(slug_alias=toponym_slug)
                 | Q(slug_ancient=toponym_slug)
             )
@@ -753,16 +748,14 @@ def toponym(request: HttpRequest, placename_id: str):
             [
                 {
                     "placename_alias": alias.placename_alias,
-                    "manuscripts": alias.manuscripts.all(),
-                    "folios": alias.folios.all(),
+                    "manuscripts": [alias.manuscript],
+                    "folios": [alias.folio],
                 }
                 for alias in aliases
             ],
             key=lambda x: (x["placename_alias"] or "").lower(),
         ),
         "placename_moderns": [],
-        "placename_standardizeds": [],
-        "placename_from_msss": [],
         "placename_ancients": [],
     }
 
@@ -772,18 +765,6 @@ def toponym(request: HttpRequest, placename_id: str):
             aggregated_aliases["placename_moderns"].extend(
                 name.strip()
                 for name in alias.placename_modern.split(",")
-                if name.strip() != "N/A"
-            )
-        if alias.placename_standardized:
-            aggregated_aliases["placename_standardizeds"].extend(
-                name.strip()
-                for name in alias.placename_standardized.split(",")
-                if name.strip() != "N/A"
-            )
-        if alias.placename_from_mss:
-            aggregated_aliases["placename_from_msss"].extend(
-                name.strip()
-                for name in alias.placename_from_mss.split(",")
                 if name.strip() != "N/A"
             )
         if alias.placename_ancient:
@@ -834,7 +815,6 @@ def search_toponyms(request):
         ).filter(
             Q(placename_modern__icontains=query)
             | Q(placename_ancient__icontains=query)
-            | Q(placename_from_mss__icontains=query)
             | Q(placename_alias__icontains=query)
         )
         locations = locations.filter(Q(name__icontains=query) | Exists(alias_subquery))
