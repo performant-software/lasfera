@@ -463,20 +463,6 @@ class LocationAliasResource(resources.ModelResource):
             instance, original, row, import_validation_errors=import_validation_errors
         )
 
-    def save_instance(self, instance, is_create, row, **kwargs):
-        """save override to provide readable duplicate key violation errors"""
-        try:
-            super().save_instance(instance, is_create, row, **kwargs)
-        except IntegrityError as e:
-            id = row.get("ID")
-            pid = row.get("Place_ID")
-            label = row.get("Label")
-            ms = row.get("MS")
-            folio = row.get("Folio")
-            raise ValueError(
-                f'Duplicate error for ID {id}: Place_ID "{pid}", Label "{label}", MS "{ms}", Folio "{folio}"'
-            ) from e
-
 
 class LineCodeResource(resources.ModelResource):
     """Resource for importing and exporting LineCode data"""
