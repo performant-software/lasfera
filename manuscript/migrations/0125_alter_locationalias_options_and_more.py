@@ -10,6 +10,7 @@ def delete_all_aliases(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    atomic = False
 
     dependencies = [
         ("manuscript", "0124_location_slug"),
