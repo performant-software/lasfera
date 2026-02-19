@@ -379,6 +379,8 @@ class LocationAliasResource(resources.ModelResource):
         import_id_fields = ["id"]
         skip_unchanged = True
         report_skipped = True
+        use_bulk = True
+        batch_size = 500
 
     # cache manuscripts by siglum to prevent unnecessary sql queries
     _ms_cache = None
