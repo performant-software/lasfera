@@ -15,8 +15,6 @@ class ToponymSerializer(serializers.ModelSerializer):
             LocationAlias.objects.filter(location=obj)
             .values(
                 "id",
-                "placename_from_mss",
-                "placename_standardized",
                 "placename_modern",
                 "placename_alias",
                 "placename_ancient",

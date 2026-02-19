@@ -2,6 +2,7 @@ from import_export import resources, fields, widgets
 from import_export.widgets import ForeignKeyWidget
 from import_export.results import RowResult
 from django.contrib import messages
+from django.db import IntegrityError
 from django.db.models import Q
 import logging
 
@@ -202,7 +203,6 @@ class LocationResource(resources.ModelResource):
     description = fields.Field(column_name="Toponym_Text", attribute="description")
     mod_name = fields.Field(column_name="Mod_Name", attribute="Mod_Name", readonly=True)
     anc_name = fields.Field(column_name="Anc_Name", attribute="Anc_Name", readonly=True)
-    ex_name = fields.Field(column_name="Ex_Name", attribute="Ex_Name", readonly=True)
 
     def before_import(self, dataset, **kwargs):
         """Clean the dataset if double headers are detected."""
@@ -231,14 +231,13 @@ class LocationResource(resources.ModelResource):
         if not created:
             instance.Mod_Name = row.get("Mod_Name")
             instance.Anc_Name = row.get("Anc_Name")
-            instance.Ex_Name = row.get("Ex_Name")
 
         return instance, created
 
     def import_field(self, field, obj, row, is_m2m=False, **kwargs):
         """attach the raw values to the python object for non-model fields,
         so dehydrate can see them"""
-        if field.column_name in ["Mod_Name", "Anc_Name", "Ex_Name"]:
+        if field.column_name in ["Mod_Name", "Anc_Name"]:
             setattr(obj, field.column_name, row.get(field.column_name))
         else:
             super().import_field(field, obj, row, is_m2m, **kwargs)
@@ -248,9 +247,6 @@ class LocationResource(resources.ModelResource):
 
     def dehydrate_anc_name(self, instance):
         return getattr(instance, "Anc_Name", "")
-
-    def dehydrate_ex_name(self, instance):
-        return getattr(instance, "Ex_Name", "")
 
     def after_import_row(self, row, row_result, **kwargs):
         """Create alias records for modern and ancient names if they exist"""
@@ -267,7 +263,6 @@ class LocationResource(resources.ModelResource):
             # Get the values
             modern_name = row.get("Mod_Name")
             ancient_name = row.get("Anc_Name")
-            mss_name = row.get("Ex_Label")
 
             if modern_name:
                 _, created = LocationAlias.objects.get_or_create(
@@ -281,14 +276,6 @@ class LocationResource(resources.ModelResource):
                 _, created = LocationAlias.objects.get_or_create(
                     location=location,
                     placename_ancient=ancient_name,
-                )
-                if created:
-                    self.aliases_created += 1
-
-            if mss_name:
-                _, created = LocationAlias.objects.get_or_create(
-                    location=location,
-                    placename_from_mss=mss_name,
                 )
                 if created:
                     self.aliases_created += 1
@@ -324,7 +311,6 @@ class LocationResource(resources.ModelResource):
             "place_type",
             "mod_name",
             "anc_name",
-            "ex_name",
             "latitude",
             "longitude",
             "authority_file",
@@ -333,20 +319,64 @@ class LocationResource(resources.ModelResource):
         )
 
 
+class LocationForeignKeyWidget(ForeignKeyWidget):
+    """custom ForeignKeyWidget widget to show a better error message for
+    missing locations"""
+
+    def clean(self, value, row=None, **kwargs):
+        val = str(value).strip() if value else None
+        try:
+            return super().clean(val, row, **kwargs)
+        except self.model.DoesNotExist:
+            id = row.get("ID")
+            raise self.model.DoesNotExist(f'Location not found for ID {id}: "{val}"')
+
+
+class ManuscriptForeignKeyWidget(ForeignKeyWidget):
+    """custom ForeignKeyWidget widget to show a better error message for
+    missing MSS"""
+
+    def clean(self, value, row=None, **kwargs):
+        val = str(value).strip() if value else None
+        try:
+            return super().clean(val, row, **kwargs)
+        except self.model.DoesNotExist:
+            id = row.get("ID")
+            raise self.model.DoesNotExist(f'Manuscript not found for ID {id}: "{val}"')
+
+
+class FolioForeignKeyWidget(ForeignKeyWidget):
+    """custom ForeignKeyWidget widget to ensure we get the folio belonging to
+    the correct manuscript"""
+
+    def get_queryset(self, value, row, *args, **kwargs):
+        siglum = str(row.get("MS", "")).strip()
+        return self.model.objects.filter(folio_number=value, manuscript__siglum=siglum)
+
+
 class LocationAliasResource(resources.ModelResource):
+    id = fields.Field(column_name="ID", attribute="id")
     location = fields.Field(
         column_name="Place_ID",
         attribute="location",
-        widget=ForeignKeyWidget(Location, "placename_id"),
+        widget=LocationForeignKeyWidget(Location, "placename_id"),
     )
     placename_alias = fields.Field(column_name="Label", attribute="placename_alias")
-    ms_siglum = fields.Field(column_name="MS", attribute="ms_siglum", readonly=True)
-    folio_number = fields.Field(column_name="Folio", attribute="folio_number", readonly=True)
+    manuscript = fields.Field(
+        column_name="MS",
+        attribute="manuscript",
+        widget=ManuscriptForeignKeyWidget(SingleManuscript, "siglum"),
+    )
+    folio = fields.Field(
+        column_name="Folio",
+        attribute="folio",
+        widget=FolioForeignKeyWidget(Folio, "folio_number"),
+    )
 
     class Meta:
         model = LocationAlias
-        fields = ("location", "placename_alias", "ms_siglum", "folio_number")
-        import_id_fields = ["location", "placename_alias"]
+        fields = ("id", "location", "placename_alias", "manuscript", "folio")
+        import_id_fields = ["id"]
         skip_unchanged = True
         report_skipped = True
 
@@ -394,30 +424,36 @@ class LocationAliasResource(resources.ModelResource):
             raise ValueError("Could not find a valid header row containing 'Place_ID'.")
 
     def before_import_row(self, row, **kwargs):
-        """skip rows with uncertain Place_ID / manuscripts that don't exist"""
-        if row.get("Label"):
-            row["Label"] = str(row["Label"]).strip()
+        """skip rows with uncertain Place_ID, and get_or_create Location/Folio
+        objects"""
 
-        pid = row.get("Place_ID")
-        if not pid or "?" in str(pid):
-            row["_skip"] = True
-            return
-
+        # pull values for lookup
+        label = str(row.get("Label", "")).strip()
+        pid = str(row.get("Place_ID", "")).strip().replace("?", "")
         ms_siglum = str(row.get("MS", "")).strip()
-        if ms_siglum not in self.ms_cache:
+        folio_num = str(row.get("Folio", "")).strip()
+
+        row["Label"] = label
+        row["Place_ID"] = pid
+        row["MS"] = ms_siglum
+        row["Folio"] = folio_num
+
+        if not pid:
             row["_skip"] = True
             return
 
         # ensure location is created if it doesn't exist
-        if pid in self.location_cache:
-            row["_related_location"] = self.location_cache[pid]
-        else:
+        if pid not in self.location_cache:
             location, _ = Location.objects.get_or_create(
                 placename_id=pid,
-                defaults={"name": row.get("HistEng_Name", "").strip()},
+                defaults={"name": str(row.get("HistEng_Name", "")).strip()},
             )
             self.location_cache[pid] = location
-            row["_related_location"] = location
+
+        # ensure folio is created if it doesn't exist
+        if folio_num and ms_siglum in self.ms_cache:
+            manuscript = self.ms_cache[ms_siglum]
+            Folio.objects.get_or_create(manuscript=manuscript, folio_number=folio_num)
 
     def skip_row(self, instance, original, row, import_validation_errors=None):
         """skip a row if marked _skip"""
@@ -426,60 +462,6 @@ class LocationAliasResource(resources.ModelResource):
         return super().skip_row(
             instance, original, row, import_validation_errors=import_validation_errors
         )
-
-    def get_instance(self, instance_loader, row):
-        """find LocationAlias by Place_ID + Label, prevent IntegrityError"""
-        related_location = row.get("_related_location")
-        label = row.get("Label")
-        if not related_location or not label:
-            return None
-        return LocationAlias.objects.filter(
-            location=related_location, placename_alias=label
-        ).first()
-
-    def get_or_init_instance(self, instance_loader, row):
-        """override to prevent 'update' highlight from showing up for
-        every single instance due to non-model fields"""
-        instance, created = super().get_or_init_instance(instance_loader, row)
-
-        instance.ms_siglum = row.get("MS")
-        instance.folio_number = row.get("Folio")
-
-        return instance, created
-    
-    def dehydrate_ms_siglum(self, instance):
-        return getattr(instance, "ms_siglum", "")
-
-    def dehydrate_folio_number(self, instance):
-        return getattr(instance, "folio_number", "")
-
-    def import_instance(self, instance, row, **kwargs):
-        """handle created Location"""
-        instance.location = row.get("_related_location")
-        # must now manually handle Label
-        instance.placename_alias = row.get("Label")
-
-    def after_import_row(self, row, row_result, **kwargs):
-        if (
-            not kwargs.get("dry_run", False)
-            and row_result.import_type != row_result.IMPORT_TYPE_SKIP
-        ):
-            alias = row_result.instance
-            if not alias or not alias.pk:
-                return
-
-            # associate MS
-            ms_siglum = row.get("MS").strip()
-            manuscript = self.ms_cache.get(ms_siglum)
-            alias.manuscripts.add(manuscript)
-
-            # associate folio
-            folio_number = str(row.get("Folio", "")).strip()
-            if folio_number:
-                folio, _ = Folio.objects.get_or_create(
-                    manuscript=manuscript, folio_number=folio_number
-                )
-                alias.folios.add(folio)
 
 
 class LineCodeResource(resources.ModelResource):

@@ -64,7 +64,6 @@
                                 return;
                             }
 
-                            const ms_alias = toponym.aliases?.length ? toponym.aliases[0].placename_from_mss : null;
                             const modern_alias = toponym.aliases?.length ? toponym.aliases[0]?.placename_modern : null;
                             const circleMarker = L.circleMarker([toponym.latitude, toponym.longitude], {
                                 radius: 6,
@@ -75,7 +74,6 @@
                             }).bindPopup(
                                 `<a style="text-decoration: underline" href="/toponyms/${toponym.slug}">${
                                     toponym.name ||
-                                    ms_alias ||
                                     (modern_alias
                                         ? `No name available (${modern_alias})`
                                         : 'No name available')

@@ -4,6 +4,7 @@ import os
 import random
 from collections import defaultdict
 from html import unescape
+import re
 
 from django.urls import reverse
 from django.contrib.contenttypes.models import ContentType
@@ -562,7 +563,12 @@ def manuscripts(request: HttpRequest):
             )
             manuscript["shelfmark_fmt"] = "%s, %s (%s)" % (
                 library_fmt,
-                manuscript["shelfmark"],
+                manuscript["shelfmark"] or "no shelfmark",
+                manuscript["siglum"] or "no siglum",
+            )
+        else:
+            manuscript["shelfmark_fmt"] = "%s (%s)" % (
+                manuscript["shelfmark"] or "no shelfmark",
                 manuscript["siglum"] or "no siglum",
             )
     sigla = [manuscript["siglum"] for manuscript in manuscripts if manuscript["siglum"]]
@@ -578,6 +584,28 @@ def manuscripts(request: HttpRequest):
     )
 
 
+def folio_sort_key(folio):
+    # Extract number and suffix from folio_number
+    # Handle potential missing or malformed folio numbers
+    if not folio.folio_number:
+        return (float("inf"), "z")  # Put empty/null values at the end
+
+    # Find the number part
+
+    number_match = re.match(r"(\d+)", folio.folio_number)
+    if not number_match:
+        return (float("inf"), "z")
+
+    number = int(number_match.group(1))
+
+    # Get the suffix (r or v), default to 'z' if neither
+    suffix = folio.folio_number[-1].lower()
+    # Make 'r' sort before 'v' by converting to sorting value
+    suffix_val = {"r": "a", "v": "b"}.get(suffix, "z")
+
+    return (number, suffix_val)
+
+
 def manuscript(request: HttpRequest, siglum: str):
     get_manuscript = get_object_or_404(
         SingleManuscript.objects.select_related("library")
@@ -590,60 +618,41 @@ def manuscript(request: HttpRequest, siglum: str):
         siglum=siglum,
     )
 
-    # Get folios and create custom sort
-    def folio_sort_key(folio):
-        # Extract number and suffix from folio_number
-        # Handle potential missing or malformed folio numbers
-        if not folio.folio_number:
-            return (float("inf"), "z")  # Put empty/null values at the end
+    # get location aliases
+    aliases = LocationAlias.objects.filter(manuscript=get_manuscript).select_related(
+        "location", "folio"
+    )
 
-        # Find the number part
-        import re
+    # get folios from existing query and group aliases by folio
+    folio_map = {}
+    for alias in aliases:
+        folio = alias.folio
+        if not folio:
+            continue
 
-        number_match = re.match(r"(\d+)", folio.folio_number)
-        if not number_match:
-            return (float("inf"), "z")
+        if folio not in folio_map:
+            folio_map[folio] = {}
 
-        number = int(number_match.group(1))
-
-        # Get the suffix (r or v), default to 'z' if neither
-        suffix = folio.folio_number[-1].lower()
-        # Make 'v' sort before 'r' by converting to sorting value
-        suffix_val = {"v": "a", "r": "b"}.get(suffix, "z")
-
-        return (number, suffix_val)
-
-    # Get folios and sort them
-    folios = sorted(get_manuscript.folio_set.all(), key=folio_sort_key)
-
-    # Rest of your existing code for handling locations...
-    for folio in folios:
-        location_aliases = LocationAlias.objects.filter(folios=folio).select_related(
-            "location"
-        )
-        locations = {alias.location for alias in location_aliases}
-
-        folio.related_locations = []
-        for location in locations:
-            primary_alias = location_aliases.filter(location=location).first()
+        location = alias.location
+        if location not in folio_map[folio]:
             display_name = (
-                primary_alias.placename_modern
-                or primary_alias.placename_from_mss
-                or location.name
-                or location.modern_country
-                or ""
+                alias.placename_modern or location.name or location.modern_country or ""
             ).strip()
 
-            folio.related_locations.append(
-                {
-                    "location": location,
-                    "alias": primary_alias,
-                    "display_name": display_name,
-                    "sort_name": display_name.lower(),
-                }
-            )
+            folio_map[folio][location] = {
+                "location": location,
+                "display_name": display_name,
+                "sort_name": display_name.lower(),
+            }
 
-        folio.related_locations.sort(key=lambda x: x["sort_name"])
+    # gather and sort folios by folio number
+    folios = sorted(folio_map.keys(), key=folio_sort_key)
+
+    # attach the sorted locations back to the folios
+    for folio in folios:
+        locs = list(folio_map[folio].values())
+        locs.sort(key=lambda x: x["sort_name"])
+        folio.related_locations = locs
 
     return render(
         request,
@@ -682,16 +691,12 @@ def toponym_by_slug(request: HttpRequest, toponym_slug: str):
         alias = (
             # Check all the possible name fields
             LocationAlias.objects.annotate(
-                slug_mss=db_slug("placename_from_mss"),
-                slug_standardized=db_slug("placename_standardized"),
                 slug_modern=db_slug("placename_modern"),
                 slug_alias=db_slug("placename_alias"),
                 slug_ancient=db_slug("placename_ancient"),
             )
             .filter(
-                Q(slug_mss=toponym_slug)
-                | Q(slug_standardized=toponym_slug)
-                | Q(slug_modern=toponym_slug)
+                Q(slug_modern=toponym_slug)
                 | Q(slug_alias=toponym_slug)
                 | Q(slug_ancient=toponym_slug)
             )
@@ -742,56 +747,62 @@ def toponym(request: HttpRequest, placename_id: str):
     iiif_urls = dict(manuscripts_with_iiif)
 
     # First get aliases with related data
-    aliases = filtered_toponym.locationalias_set.all().prefetch_related(
-        "manuscripts", "folios"
+    aliases = filtered_toponym.locationalias_set.all().select_related(
+        "manuscript", "folio"
     )
 
+    # prep for de-duplication with sets
+    grouped_aliases_dict = {}
+    placename_moderns = set()
+    placename_ancients = set()
+
     # Then process aggregations
+    for alias in aliases:
+        # de-dupe and filter ancient and modern names
+        if alias.placename_modern:
+            for name in alias.placename_modern.split(","):
+                clean_name = name.strip()
+                if clean_name != "N/A":
+                    placename_moderns.add(clean_name)
+        if alias.placename_ancient:
+            for name in alias.placename_ancient.split(","):
+                clean_name = name.strip()
+                if clean_name != "N/A":
+                    placename_ancients.add(clean_name)
+        alias_name = alias.placename_alias
+
+        # group variant names by spelling
+        if alias_name:
+            if alias_name not in grouped_aliases_dict:
+                grouped_aliases_dict[alias_name] = {
+                    "placename_alias": alias_name,
+                    "manuscripts": set(),
+                }
+
+            if alias.manuscript:
+                grouped_aliases_dict[alias_name]["manuscripts"].add(alias.manuscript)
+
+    # convert alias dict back to a sorted list for the template
+    sorted_aliases = []
+    for data in grouped_aliases_dict.values():
+        sorted_aliases.append(
+            {
+                "placename_alias": data["placename_alias"],
+                "manuscripts": sorted(
+                    list(data["manuscripts"]), key=lambda m: m.siglum
+                ),
+            }
+        )
+
+    # Final sort of the aliases alphabetically
+    sorted_aliases.sort(key=lambda x: x["placename_alias"].lower())
+
     aggregated_aliases = {
         "name": filtered_toponym.name,
-        "aliases": sorted(
-            [
-                {
-                    "placename_alias": alias.placename_alias,
-                    "manuscripts": alias.manuscripts.all(),
-                    "folios": alias.folios.all(),
-                }
-                for alias in aliases
-            ],
-            key=lambda x: (x["placename_alias"] or "").lower(),
-        ),
-        "placename_moderns": [],
-        "placename_standardizeds": [],
-        "placename_from_msss": [],
-        "placename_ancients": [],
+        "aliases": sorted_aliases,
+        "placename_moderns": sorted(list(placename_moderns)),
+        "placename_ancients": sorted(list(placename_ancients)),
     }
-
-    # Process aggregations
-    for alias in aliases:
-        if alias.placename_modern:
-            aggregated_aliases["placename_moderns"].extend(
-                name.strip()
-                for name in alias.placename_modern.split(",")
-                if name.strip() != "N/A"
-            )
-        if alias.placename_standardized:
-            aggregated_aliases["placename_standardizeds"].extend(
-                name.strip()
-                for name in alias.placename_standardized.split(",")
-                if name.strip() != "N/A"
-            )
-        if alias.placename_from_mss:
-            aggregated_aliases["placename_from_msss"].extend(
-                name.strip()
-                for name in alias.placename_from_mss.split(",")
-                if name.strip() != "N/A"
-            )
-        if alias.placename_ancient:
-            aggregated_aliases["placename_ancients"].extend(
-                name.strip()
-                for name in alias.placename_ancient.split(",")
-                if name.strip() != "N/A"
-            )
 
     # After aliases are processed, then handle IIIF URLs and manifests
     manuscripts_with_iiif = filtered_manuscripts.exclude(
@@ -834,7 +845,6 @@ def search_toponyms(request):
         ).filter(
             Q(placename_modern__icontains=query)
             | Q(placename_ancient__icontains=query)
-            | Q(placename_from_mss__icontains=query)
             | Q(placename_alias__icontains=query)
         )
         locations = locations.filter(Q(name__icontains=query) | Exists(alias_subquery))

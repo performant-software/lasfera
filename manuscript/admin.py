@@ -108,7 +108,7 @@ class CodexInline(admin.StackedInline):
 class LocationAliasInline(admin.TabularInline):
     model = LocationAlias
     extra = 1
-    autocomplete_fields = ("manuscripts", "folios")
+    autocomplete_fields = ("manuscript", "folio")
 
 
 class AuthorityFileInline(admin.TabularInline):
@@ -388,10 +388,9 @@ class LocationAdmin(ImportExportModelAdmin):
         "placename_id",
         "name",
         "get_placename_modern",
-        "get_mss_placename",
+        "get_placename_ancient",
         "toponym_type",
         "place_type",
-        "get_related_folios",
         "slug",
         "id",
     )
@@ -404,27 +403,20 @@ class LocationAdmin(ImportExportModelAdmin):
 
     description_html.short_description = "Description"
 
-    def get_related_folios(self, obj):
-        return ", ".join([str(folio.folio_number) for folio in obj.folio_set.all()])
-
-    get_related_folios.short_description = "Related folio"
-
     def get_placename_modern(self, obj):
         # use prefetched LocationAlias set
-        alias = (
-            obj.locationalias_set.all()[0] if obj.locationalias_set.exists() else None
-        )
-        return alias.placename_modern if alias else None
+        aliases = obj.locationalias_set.all()
+        names = [a.placename_modern for a in aliases if a.placename_modern]
+        return ", ".join(set(names)) if names else "-"
 
     get_placename_modern.short_description = "Modern Placename"
 
-    def get_mss_placename(self, obj):
-        alias = (
-            obj.locationalias_set.all()[0] if obj.locationalias_set.exists() else None
-        )
-        return alias.placename_from_mss if alias else None
+    def get_placename_ancient(self, obj):
+        aliases = obj.locationalias_set.all()
+        names = [a.placename_ancient for a in aliases if a.placename_ancient]
+        return ", ".join(set(names)) if names else "-"
 
-    get_mss_placename.short_description = "Manuscript Placename"
+    get_placename_ancient.short_description = "Ancient Placename"
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
@@ -447,9 +439,8 @@ class LocationAliasAdmin(ImportExportModelAdmin):
     list_display = (
         "location",
         "placename_alias",
-        "placename_from_mss",
         "placename_ancient",
-        "placename_standardized",
+        "placename_modern",
     )
     list_filter = ("location",)
     search_fields = ("placename_alias",)

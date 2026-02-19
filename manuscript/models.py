@@ -939,20 +939,6 @@ class LocationAlias(models.Model):
     """The alias of a location"""
 
     id = models.AutoField(primary_key=True)
-    placename_from_mss = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Transcribed placename",
-        help_text="The placename as it appears in the manuscript.",
-    )
-    placename_standardized = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Standardized placename",
-        help_text="The standardized name of the placename.",
-    )
     placename_modern = models.CharField(
         max_length=255,
         blank=True,
@@ -977,23 +963,20 @@ class LocationAlias(models.Model):
     location = models.ForeignKey(
         Location, on_delete=models.CASCADE, blank=True, null=True
     )
-    manuscripts = models.ManyToManyField(
-        SingleManuscript,
-        blank=True,
+    manuscript = models.ForeignKey(
+        SingleManuscript, on_delete=models.CASCADE, null=True, blank=False
     )
-    folios = models.ManyToManyField(Folio, blank=True)
+    folio = models.ForeignKey(Folio, on_delete=models.CASCADE, null=True, blank=False)
 
     class Meta:
         verbose_name = "Toponym Alias"
         verbose_name_plural = "Toponym Aliases"
-        ordering = ["placename_standardized"]
-        unique_together = [
-            "location",
-            "placename_alias",
-        ]
 
     def __str__(self) -> str:
-        return f"{self.placename_from_mss} / {self.placename_standardized} / {self.placename_modern} / {self.placename_alias}"
+        str_name = (
+            self.placename_alias or self.placename_modern or self.placename_ancient
+        )
+        return f"Alias {self.id}: {str_name}"
 
 
 class ManuscriptFamily(models.Model):
