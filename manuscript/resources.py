@@ -331,6 +331,7 @@ class LocationForeignKeyWidget(ForeignKeyWidget):
             id = row.get("ID")
             raise self.model.DoesNotExist(f'Location not found for ID {id}: "{val}"')
 
+
 class ManuscriptForeignKeyWidget(ForeignKeyWidget):
     """custom ForeignKeyWidget widget to show a better error message for
     missing MSS"""
@@ -428,7 +429,7 @@ class LocationAliasResource(resources.ModelResource):
 
         # pull values for lookup
         label = str(row.get("Label", "")).strip()
-        pid = str(row.get("Place_ID", "")).strip()
+        pid = str(row.get("Place_ID", "")).strip().replace("?", "")
         ms_siglum = str(row.get("MS", "")).strip()
         folio_num = str(row.get("Folio", "")).strip()
 
@@ -437,7 +438,7 @@ class LocationAliasResource(resources.ModelResource):
         row["MS"] = ms_siglum
         row["Folio"] = folio_num
 
-        if not pid or "?" in pid:
+        if not pid:
             row["_skip"] = True
             return
 
