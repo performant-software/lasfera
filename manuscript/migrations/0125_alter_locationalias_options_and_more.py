@@ -4,9 +4,38 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
-def delete_all_aliases(apps, schema_editor):
+def migrate_and_clean_aliases(apps, schema_editor):
     LocationAlias = apps.get_model("manuscript", "LocationAlias")
-    LocationAlias.objects.all().delete()
+
+    # delete placename_alias entries
+    LocationAlias.objects.filter(
+        (models.Q(placename_modern__isnull=True) | models.Q(placename_modern="")),
+        (models.Q(placename_ancient__isnull=True) | models.Q(placename_ancient="")),
+    ).exclude(
+        models.Q(placename_alias__isnull=True) | models.Q(placename_alias="")
+    ).delete()
+
+    # keep placename_modern and placename_ancient entries
+    to_update = []
+    to_keep = LocationAlias.objects.prefetch_related("manuscripts", "folios").exclude(
+        models.Q(placename_modern__isnull=True) | models.Q(placename_modern=""),
+        models.Q(placename_ancient__isnull=True) | models.Q(placename_ancient=""),
+    )
+
+    # migrate to new LocationAlias.manuscript and LocaitonAlias.folio
+    for alias in to_keep:
+        # just use first related manuscript and folio
+        old_ms = alias.manuscripts.first()
+        old_folio = alias.folios.first()
+
+        if old_ms or old_folio:
+            alias.manuscript = old_ms
+            alias.folio = old_folio
+            to_update.append(alias)
+
+    # bulk update
+    if to_update:
+        LocationAlias.objects.bulk_update(to_update, ["manuscript", "folio"])
 
 
 class Migration(migrations.Migration):
@@ -17,13 +46,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(delete_all_aliases, migrations.RunPython.noop),
-        migrations.AlterModelOptions(
+        migrations.AlterUniqueTogether(
             name="locationalias",
-            options={
-                "verbose_name": "Toponym Alias",
-                "verbose_name_plural": "Toponym Aliases",
-            },
+            unique_together=set(),
         ),
         migrations.AddField(
             model_name="locationalias",
@@ -42,6 +67,14 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.CASCADE,
                 to="manuscript.singlemanuscript",
             ),
+        ),
+        migrations.RunPython(migrate_and_clean_aliases, migrations.RunPython.noop),
+        migrations.AlterModelOptions(
+            name="locationalias",
+            options={
+                "verbose_name": "Toponym Alias",
+                "verbose_name_plural": "Toponym Aliases",
+            },
         ),
         migrations.RemoveField(
             model_name="locationalias",
