@@ -161,10 +161,10 @@ def manuscript_stanzas(request, siglum):
             # If no translations found or this is Yale3 manuscript, use FK relationship instead
             if (not translated_stanza_group or siglum == "Yale3") and original_stanzas:
                 # Create a map of original stanza IDs
-                original_ids = [s.id for s in original_stanzas]
+                original_ids = [s["id"] for s in original_stanzas]
                 # Find translations directly linked to these stanzas
                 linked_translations = [
-                    ts for ts in translated_stanzas if ts.stanza_id in original_ids
+                    ts for ts in translated_stanzas if ts["stanza_id"] in original_ids
                 ]
                 if linked_translations:
                     # Override the translations with the directly linked ones
