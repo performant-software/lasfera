@@ -191,6 +191,8 @@ class LocationResource(resources.ModelResource):
     placename_id = fields.Field(column_name="Place_ID", attribute="placename_id")
     name = fields.Field(column_name="HistEng_Name", attribute="name")
     place_type = fields.Field(column_name="Place_Type", attribute="place_type")
+    placename_modern = fields.Field(column_name="Mod_Name", attribute="placename_modern")
+    placename_ancient = fields.Field(column_name="Anc_Name", attribute="placename_ancient")
     latitude = fields.Field(
         column_name="Latitude", attribute="latitude", widget=widgets.FloatWidget()
     )
@@ -200,8 +202,6 @@ class LocationResource(resources.ModelResource):
     authority_file = fields.Field(column_name="WHG_Link", attribute="authority_file")
     modern_country = fields.Field(column_name="Country", attribute="modern_country")
     description = fields.Field(column_name="Toponym_Text", attribute="description")
-    mod_name = fields.Field(column_name="Mod_Name", attribute="Mod_Name", readonly=True)
-    anc_name = fields.Field(column_name="Anc_Name", attribute="Anc_Name", readonly=True)
 
     def before_import(self, dataset, **kwargs):
         """Clean the dataset if double headers are detected."""
@@ -222,83 +222,6 @@ class LocationResource(resources.ModelResource):
             if isinstance(row[key], str) and row[key].strip() in null_strings:
                 row[key] = None
 
-    def get_or_init_instance(self, instance_loader, row):
-        """override to prevent 'update' highlight from showing up for
-        every single instance due to non-model fields"""
-        instance, created = super().get_or_init_instance(instance_loader, row)
-
-        if not created:
-            instance.Mod_Name = row.get("Mod_Name")
-            instance.Anc_Name = row.get("Anc_Name")
-
-        return instance, created
-
-    def import_field(self, field, obj, row, is_m2m=False, **kwargs):
-        """attach the raw values to the python object for non-model fields,
-        so dehydrate can see them"""
-        if field.column_name in ["Mod_Name", "Anc_Name"]:
-            setattr(obj, field.column_name, row.get(field.column_name))
-        else:
-            super().import_field(field, obj, row, is_m2m, **kwargs)
-
-    def dehydrate_mod_name(self, instance):
-        return getattr(instance, "Mod_Name", "")
-
-    def dehydrate_anc_name(self, instance):
-        return getattr(instance, "Anc_Name", "")
-
-    def after_import_row(self, row, row_result, **kwargs):
-        """Create alias records for modern and ancient names if they exist"""
-        # check dry_run to prevent creating LocationAlias records during preview
-        dry_run = kwargs.get("dry_run", False)
-        if dry_run:
-            return
-        location = row_result.instance
-        if not location or not location.pk:
-            return
-        try:
-            location = Location.objects.get(placename_id=row.get("Place_ID"))
-
-            # Get the values
-            modern_name = row.get("Mod_Name")
-            ancient_name = row.get("Anc_Name")
-
-            if modern_name:
-                _, created = LocationAlias.objects.get_or_create(
-                    location=location,
-                    placename_modern=modern_name,
-                )
-                if created:
-                    self.aliases_created += 1
-
-            if ancient_name:
-                _, created = LocationAlias.objects.get_or_create(
-                    location=location,
-                    placename_ancient=ancient_name,
-                )
-                if created:
-                    self.aliases_created += 1
-
-        except Location.DoesNotExist:
-            pass
-        except Exception as e:
-            logger.error(f"Error creating alias for {row.get('Place_ID')}: {str(e)}")
-
-    def after_import(self, dataset, result, **kwargs):
-        """Add custom toponym alias summary to the import result"""
-        if not kwargs.get("dry_run", False):
-            count = getattr(self, "aliases_created", 0)
-            request = kwargs.get("request")
-            if request and count > 0:
-                messages.success(
-                    request,
-                    f"Import successful. In addition to toponyms, {count} new Toponym Aliases were created/linked.",
-                )
-            elif request:
-                messages.info(
-                    request, "Import successful. No new Toponym Aliases were required."
-                )
-
     class Meta:
         model = Location
         import_id_fields = ["placename_id"]
@@ -308,8 +231,8 @@ class LocationResource(resources.ModelResource):
             "placename_id",
             "name",
             "place_type",
-            "mod_name",
-            "anc_name",
+            "placename_modern",
+            "placename_ancient",
             "latitude",
             "longitude",
             "authority_file",
