@@ -831,6 +831,20 @@ class Location(SlugModel):
         blank=False, null=False, verbose_name="Name", max_length=255, default=""
     )
     description = RichTextField(blank=True, null=True)
+    placename_modern = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Modern placename",
+        help_text="The modern name of the placename.",
+    )
+    placename_ancient = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Ancient placename",
+        help_text="The ancient name of the placename.",
+    )
     modern_country = models.CharField(
         max_length=255, blank=True, null=True, verbose_name="Modern Country"
     )
@@ -939,27 +953,6 @@ class LocationAlias(models.Model):
     """The alias of a location"""
 
     id = models.AutoField(primary_key=True)
-    placename_from_mss = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Transcribed placename",
-        help_text="The placename as it appears in the manuscript.",
-    )
-    placename_standardized = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Standardized placename",
-        help_text="The standardized name of the placename.",
-    )
-    placename_modern = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Modern placename",
-        help_text="The modern name of the placename.",
-    )
     placename_alias = models.CharField(
         max_length=255,
         blank=True,
@@ -967,33 +960,20 @@ class LocationAlias(models.Model):
         verbose_name="Additional aliases",
         help_text="Additional aliases for the placename.",
     )
-    placename_ancient = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Ancient placename",
-        help_text="The ancient name of the placename.",
-    )
     location = models.ForeignKey(
         Location, on_delete=models.CASCADE, blank=True, null=True
     )
-    manuscripts = models.ManyToManyField(
-        SingleManuscript,
-        blank=True,
+    manuscript = models.ForeignKey(
+        SingleManuscript, on_delete=models.CASCADE, null=True, blank=False
     )
-    folios = models.ManyToManyField(Folio, blank=True)
+    folio = models.ForeignKey(Folio, on_delete=models.CASCADE, null=True, blank=False)
 
     class Meta:
         verbose_name = "Toponym Alias"
         verbose_name_plural = "Toponym Aliases"
-        ordering = ["placename_standardized"]
-        unique_together = [
-            "location",
-            "placename_alias",
-        ]
 
     def __str__(self) -> str:
-        return f"{self.placename_from_mss} / {self.placename_standardized} / {self.placename_modern} / {self.placename_alias}"
+        return f"Alias {self.id}: {self.placename_alias}"
 
 
 class ManuscriptFamily(models.Model):

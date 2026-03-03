@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static wagtailcore_tags %}
 
 {% block title %}
     Home -  La Sfera
@@ -43,9 +43,7 @@
                    <em>La Sfera</em> &middot; The Globe
                 </h1>
                 <p class="text-xl md:text-2xl max-w-3xl mx-auto text-gray-200">
-                    Explore the manuscripts through our digital edition, featuring 
-                    high-resolution images, transcriptions, and scholarly analysis of the 
-                    text and its context.
+                    Goro Dati's cosmological treatise and itinerary from the Atlantic to the Black Sea
                 </p>
             </div>
         </div>
@@ -66,7 +64,7 @@
             {% if intro %}
                 <h2 class="text-3xl font-bold text-gray-900 mb-6 max-w-3xl mx-auto">{{ intro.title }}</h2>
                 <div class="text-xl text-gray-600 max-w-3xl mx-auto">
-                    {{ intro.body|safe }}
+                    {% include_block intro.body %}
                 </div>
             {% else %}
                 <h2 class="text-3xl font-bold text-gray-900 mb-6">Welcome to the La Sfera Project</h2>

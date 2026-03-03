@@ -108,7 +108,7 @@ class CodexInline(admin.StackedInline):
 class LocationAliasInline(admin.TabularInline):
     model = LocationAlias
     extra = 1
-    autocomplete_fields = ("manuscripts", "folios")
+    autocomplete_fields = ("manuscript", "folio")
 
 
 class AuthorityFileInline(admin.TabularInline):
@@ -387,11 +387,10 @@ class LocationAdmin(ImportExportModelAdmin):
     list_display = (
         "placename_id",
         "name",
-        "get_placename_modern",
-        "get_mss_placename",
+        "placename_ancient",
+        "placename_modern",
         "toponym_type",
         "place_type",
-        "get_related_folios",
         "slug",
         "id",
     )
@@ -403,28 +402,6 @@ class LocationAdmin(ImportExportModelAdmin):
         return format_html(obj.description) if obj.description else ""
 
     description_html.short_description = "Description"
-
-    def get_related_folios(self, obj):
-        return ", ".join([str(folio.folio_number) for folio in obj.folio_set.all()])
-
-    get_related_folios.short_description = "Related folio"
-
-    def get_placename_modern(self, obj):
-        # use prefetched LocationAlias set
-        alias = (
-            obj.locationalias_set.all()[0] if obj.locationalias_set.exists() else None
-        )
-        return alias.placename_modern if alias else None
-
-    get_placename_modern.short_description = "Modern Placename"
-
-    def get_mss_placename(self, obj):
-        alias = (
-            obj.locationalias_set.all()[0] if obj.locationalias_set.exists() else None
-        )
-        return alias.placename_from_mss if alias else None
-
-    get_mss_placename.short_description = "Manuscript Placename"
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
@@ -447,9 +424,6 @@ class LocationAliasAdmin(ImportExportModelAdmin):
     list_display = (
         "location",
         "placename_alias",
-        "placename_from_mss",
-        "placename_ancient",
-        "placename_standardized",
     )
     list_filter = ("location",)
     search_fields = ("placename_alias",)

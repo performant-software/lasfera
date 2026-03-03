@@ -1,5 +1,5 @@
 from import_export import resources, fields, widgets
-from import_export.widgets import ForeignKeyWidget
+from import_export.widgets import ForeignKeyWidget, Widget
 from import_export.results import RowResult
 from django.contrib import messages
 from django.db.models import Q
@@ -191,6 +191,8 @@ class LocationResource(resources.ModelResource):
     placename_id = fields.Field(column_name="Place_ID", attribute="placename_id")
     name = fields.Field(column_name="HistEng_Name", attribute="name")
     place_type = fields.Field(column_name="Place_Type", attribute="place_type")
+    placename_modern = fields.Field(column_name="Mod_Name", attribute="placename_modern")
+    placename_ancient = fields.Field(column_name="Anc_Name", attribute="placename_ancient")
     latitude = fields.Field(
         column_name="Latitude", attribute="latitude", widget=widgets.FloatWidget()
     )
@@ -200,9 +202,6 @@ class LocationResource(resources.ModelResource):
     authority_file = fields.Field(column_name="WHG_Link", attribute="authority_file")
     modern_country = fields.Field(column_name="Country", attribute="modern_country")
     description = fields.Field(column_name="Toponym_Text", attribute="description")
-    mod_name = fields.Field(column_name="Mod_Name", attribute="Mod_Name", readonly=True)
-    anc_name = fields.Field(column_name="Anc_Name", attribute="Anc_Name", readonly=True)
-    ex_name = fields.Field(column_name="Ex_Name", attribute="Ex_Name", readonly=True)
 
     def before_import(self, dataset, **kwargs):
         """Clean the dataset if double headers are detected."""
@@ -223,96 +222,6 @@ class LocationResource(resources.ModelResource):
             if isinstance(row[key], str) and row[key].strip() in null_strings:
                 row[key] = None
 
-    def get_or_init_instance(self, instance_loader, row):
-        """override to prevent 'update' highlight from showing up for
-        every single instance due to non-model fields"""
-        instance, created = super().get_or_init_instance(instance_loader, row)
-
-        if not created:
-            instance.Mod_Name = row.get("Mod_Name")
-            instance.Anc_Name = row.get("Anc_Name")
-            instance.Ex_Name = row.get("Ex_Name")
-
-        return instance, created
-
-    def import_field(self, field, obj, row, is_m2m=False, **kwargs):
-        """attach the raw values to the python object for non-model fields,
-        so dehydrate can see them"""
-        if field.column_name in ["Mod_Name", "Anc_Name", "Ex_Name"]:
-            setattr(obj, field.column_name, row.get(field.column_name))
-        else:
-            super().import_field(field, obj, row, is_m2m, **kwargs)
-
-    def dehydrate_mod_name(self, instance):
-        return getattr(instance, "Mod_Name", "")
-
-    def dehydrate_anc_name(self, instance):
-        return getattr(instance, "Anc_Name", "")
-
-    def dehydrate_ex_name(self, instance):
-        return getattr(instance, "Ex_Name", "")
-
-    def after_import_row(self, row, row_result, **kwargs):
-        """Create alias records for modern and ancient names if they exist"""
-        # check dry_run to prevent creating LocationAlias records during preview
-        dry_run = kwargs.get("dry_run", False)
-        if dry_run:
-            return
-        location = row_result.instance
-        if not location or not location.pk:
-            return
-        try:
-            location = Location.objects.get(placename_id=row.get("Place_ID"))
-
-            # Get the values
-            modern_name = row.get("Mod_Name")
-            ancient_name = row.get("Anc_Name")
-            mss_name = row.get("Ex_Label")
-
-            if modern_name:
-                _, created = LocationAlias.objects.get_or_create(
-                    location=location,
-                    placename_modern=modern_name,
-                )
-                if created:
-                    self.aliases_created += 1
-
-            if ancient_name:
-                _, created = LocationAlias.objects.get_or_create(
-                    location=location,
-                    placename_ancient=ancient_name,
-                )
-                if created:
-                    self.aliases_created += 1
-
-            if mss_name:
-                _, created = LocationAlias.objects.get_or_create(
-                    location=location,
-                    placename_from_mss=mss_name,
-                )
-                if created:
-                    self.aliases_created += 1
-
-        except Location.DoesNotExist:
-            pass
-        except Exception as e:
-            logger.error(f"Error creating alias for {row.get('Place_ID')}: {str(e)}")
-
-    def after_import(self, dataset, result, **kwargs):
-        """Add custom toponym alias summary to the import result"""
-        if not kwargs.get("dry_run", False):
-            count = getattr(self, "aliases_created", 0)
-            request = kwargs.get("request")
-            if request and count > 0:
-                messages.success(
-                    request,
-                    f"Import successful. In addition to toponyms, {count} new Toponym Aliases were created/linked.",
-                )
-            elif request:
-                messages.info(
-                    request, "Import successful. No new Toponym Aliases were required."
-                )
-
     class Meta:
         model = Location
         import_id_fields = ["placename_id"]
@@ -322,9 +231,8 @@ class LocationResource(resources.ModelResource):
             "placename_id",
             "name",
             "place_type",
-            "mod_name",
-            "anc_name",
-            "ex_name",
+            "placename_modern",
+            "placename_ancient",
             "latitude",
             "longitude",
             "authority_file",
@@ -333,46 +241,126 @@ class LocationResource(resources.ModelResource):
         )
 
 
+class UniqueIDWidget(Widget):
+    """checks for empty IDs / duplicates within a single imported file"""
+
+    def clean(self, value, row=None, **kwargs):
+        if value is None or str(value).strip() == "":
+            if row:
+                label = str(row.get("Label", "")).strip()
+                pid = str(row.get("Place_ID", "")).strip().replace("?", "")
+                ms = str(row.get("MS", "")).strip()
+                folio = str(row.get("Folio", "")).strip()
+                raise ValueError(
+                    f"Row is missing an ID. ({label}, place {pid}, ms {ms}, folio {folio})"
+                )
+            raise ValueError(f"Row is missing an ID.")
+        val = str(value).strip()
+        if self.resource:
+            if row and row.get("_row_seen"):
+                return val
+            if val in self.resource.seen_import_ids:
+                raise ValueError(f"Duplicate ID '{val}' found in this file.")
+            self.resource.seen_import_ids.add(val)
+            if row:
+                row["_row_seen"] = True
+
+        return val
+
+
+class LocationForeignKeyWidget(ForeignKeyWidget):
+    """custom ForeignKeyWidget widget to show a better error message for
+    missing locations"""
+
+    def clean(self, value, row=None, **kwargs):
+        if value is None or str(value).strip() == "":
+            return None
+        val = str(value).strip()
+        location = self.resource.location_cache.get(val)
+        if not location:
+            id = row.get("ID")
+            raise self.model.DoesNotExist(f'Location not found for ID {id}: "{val}"')
+        return location
+
+
+class ManuscriptForeignKeyWidget(ForeignKeyWidget):
+    """custom ForeignKeyWidget widget to show a better error message for
+    missing MSS"""
+
+    def clean(self, value, row=None, **kwargs):
+        if value is None or str(value).strip() == "":
+            return None
+        val = str(value).strip()
+        ms = self.resource.ms_cache.get(val)
+        if not ms:
+            id = row.get("ID")
+            raise self.model.DoesNotExist(f'Manuscript not found for ID {id}: "{val}"')
+        return ms
+
+
+class FolioForeignKeyWidget(ForeignKeyWidget):
+    """custom ForeignKeyWidget widget to ensure we get the folio belonging to
+    the correct manuscript"""
+
+    def get_queryset(self, value, row, *args, **kwargs):
+        siglum = str(row.get("MS", "")).strip()
+        return self.model.objects.filter(folio_number=value, manuscript__siglum=siglum)
+
+    def clean(self, value, row=None, **kwargs):
+        if value is None or str(value).strip() == "":
+            return None
+        val = str(value).strip()
+        ms_siglum = str(row.get("MS", "")).strip()
+        folio = self.resource.folio_cache.get((ms_siglum, val))
+        if not folio:
+            ms = row.get("MS")
+            id = row.get("ID")
+            raise self.model.DoesNotExist(
+                f'Folio "{val}" not found for ID {id} (MS "{ms}")'
+            )
+        return folio
+
+
 class LocationAliasResource(resources.ModelResource):
+    id = fields.Field(column_name="ID", attribute="id", widget=UniqueIDWidget())
     location = fields.Field(
         column_name="Place_ID",
         attribute="location",
-        widget=ForeignKeyWidget(Location, "placename_id"),
+        widget=LocationForeignKeyWidget(Location, "placename_id"),
     )
     placename_alias = fields.Field(column_name="Label", attribute="placename_alias")
-    ms_siglum = fields.Field(column_name="MS", attribute="ms_siglum", readonly=True)
-    folio_number = fields.Field(column_name="Folio", attribute="folio_number", readonly=True)
+    manuscript = fields.Field(
+        column_name="MS",
+        attribute="manuscript",
+        widget=ManuscriptForeignKeyWidget(SingleManuscript, "siglum"),
+    )
+    folio = fields.Field(
+        column_name="Folio",
+        attribute="folio",
+        widget=FolioForeignKeyWidget(Folio, "folio_number"),
+    )
 
     class Meta:
         model = LocationAlias
-        fields = ("location", "placename_alias", "ms_siglum", "folio_number")
-        import_id_fields = ["location", "placename_alias"]
+        fields = ("id", "location", "placename_alias", "manuscript", "folio")
+        import_id_fields = ["id"]
         skip_unchanged = True
         report_skipped = True
+        use_bulk = True
+        batch_size = 500
 
-    # cache manuscripts by siglum to prevent unnecessary sql queries
-    _ms_cache = None
-    # and locations by placename_id
-    _location_cache = None
-
-    @property
-    def ms_cache(self):
-        """lazy-loaded manuscript cache by siglum"""
-        if self._ms_cache is None:
-            self._ms_cache = {
-                m.siglum.strip(): m
-                for m in SingleManuscript.objects.filter(siglum__isnull=False)
-            }
-        return self._ms_cache
-
-    @property
-    def location_cache(self):
-        if self._location_cache is None:
-            self._location_cache = {
-                l.placename_id: l
-                for l in Location.objects.filter(placename_id__isnull=False)
-            }
-        return self._location_cache
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # cache manuscripts by siglum to prevent unnecessary sql queries
+        self.ms_cache = {}
+        # and locations by placename_id
+        self.location_cache = {}
+        # and folios by a tuple of (ms_siglum, folio_number)
+        self.folio_cache = {}
+        # allow better error handling for duplicate IDs
+        self.seen_import_ids = set()
+        for field in self.fields.values():
+            field.widget.resource = self
 
     def before_import(self, dataset, **kwargs):
         """Clean extra rows above the header"""
@@ -393,31 +381,67 @@ class LocationAliasResource(resources.ModelResource):
         if not found_header:
             raise ValueError("Could not find a valid header row containing 'Place_ID'.")
 
-    def before_import_row(self, row, **kwargs):
-        """skip rows with uncertain Place_ID / manuscripts that don't exist"""
-        if row.get("Label"):
-            row["Label"] = str(row["Label"]).strip()
+        self.seen_import_ids = set()
+        self.ms_cache = {m.siglum: m for m in SingleManuscript.objects.all()}
+        self.location_cache = {l.placename_id: l for l in Location.objects.all()}
+        self.folio_cache = {
+            (f.manuscript.siglum, f.folio_number): f
+            for f in Folio.objects.select_related("manuscript").all()
+        }
 
-        pid = row.get("Place_ID")
-        if not pid or "?" in str(pid):
-            row["_skip"] = True
-            return
+        missing_locations = []
+        missing_folios = []
 
-        ms_siglum = str(row.get("MS", "")).strip()
-        if ms_siglum not in self.ms_cache:
-            row["_skip"] = True
-            return
+        seen_locations = set(self.location_cache.keys())
+        seen_folios = set(self.folio_cache.keys())
 
+        for row in dataset.dict:
+            pid = str(row.get("Place_ID", "")).strip().replace("?", "")
+            ms = str(row.get("MS", "")).strip()
+            fol = str(row.get("Folio", "")).strip()
+            name = str(row.get("HistEng_Name", "")).strip()
+
+            if pid and pid not in seen_locations:
+                missing_locations.append(Location(placename_id=pid, name=name))
+                seen_locations.add(pid)
+
+            if fol and ms in self.ms_cache and (ms, fol) not in seen_folios:
+                missing_folios.append(
+                    Folio(manuscript=self.ms_cache[ms], folio_number=fol)
+                )
+                seen_folios.add((ms, fol))
+
+        # bulk create missing locations and folios
         # ensure location is created if it doesn't exist
-        if pid in self.location_cache:
-            row["_related_location"] = self.location_cache[pid]
-        else:
-            location, _ = Location.objects.get_or_create(
-                placename_id=pid,
-                defaults={"name": row.get("HistEng_Name", "").strip()},
-            )
-            self.location_cache[pid] = location
-            row["_related_location"] = location
+        if missing_locations:
+            Location.objects.bulk_create(missing_locations)
+            self.location_cache = {l.placename_id: l for l in Location.objects.all()}
+
+        # ensure folio is created if it doesn't exist
+        if missing_folios:
+            Folio.objects.bulk_create(missing_folios)
+            self.folio_cache = {
+                (f.manuscript.siglum, f.folio_number): f
+                for f in Folio.objects.select_related("manuscript").all()
+            }
+
+    def before_import_row(self, row, **kwargs):
+        """clean values, skip rows with uncertain Place_ID"""
+
+        # clean values
+        label = str(row.get("Label", "")).strip()
+        pid = str(row.get("Place_ID", "")).strip().replace("?", "")
+        ms_siglum = str(row.get("MS", "")).strip()
+        folio_num = str(row.get("Folio", "")).strip()
+
+        row["Label"] = label
+        row["Place_ID"] = pid
+        row["MS"] = ms_siglum
+        row["Folio"] = folio_num
+
+        if not pid:
+            row["_skip"] = True
+            return
 
     def skip_row(self, instance, original, row, import_validation_errors=None):
         """skip a row if marked _skip"""
@@ -426,60 +450,6 @@ class LocationAliasResource(resources.ModelResource):
         return super().skip_row(
             instance, original, row, import_validation_errors=import_validation_errors
         )
-
-    def get_instance(self, instance_loader, row):
-        """find LocationAlias by Place_ID + Label, prevent IntegrityError"""
-        related_location = row.get("_related_location")
-        label = row.get("Label")
-        if not related_location or not label:
-            return None
-        return LocationAlias.objects.filter(
-            location=related_location, placename_alias=label
-        ).first()
-
-    def get_or_init_instance(self, instance_loader, row):
-        """override to prevent 'update' highlight from showing up for
-        every single instance due to non-model fields"""
-        instance, created = super().get_or_init_instance(instance_loader, row)
-
-        instance.ms_siglum = row.get("MS")
-        instance.folio_number = row.get("Folio")
-
-        return instance, created
-    
-    def dehydrate_ms_siglum(self, instance):
-        return getattr(instance, "ms_siglum", "")
-
-    def dehydrate_folio_number(self, instance):
-        return getattr(instance, "folio_number", "")
-
-    def import_instance(self, instance, row, **kwargs):
-        """handle created Location"""
-        instance.location = row.get("_related_location")
-        # must now manually handle Label
-        instance.placename_alias = row.get("Label")
-
-    def after_import_row(self, row, row_result, **kwargs):
-        if (
-            not kwargs.get("dry_run", False)
-            and row_result.import_type != row_result.IMPORT_TYPE_SKIP
-        ):
-            alias = row_result.instance
-            if not alias or not alias.pk:
-                return
-
-            # associate MS
-            ms_siglum = row.get("MS").strip()
-            manuscript = self.ms_cache.get(ms_siglum)
-            alias.manuscripts.add(manuscript)
-
-            # associate folio
-            folio_number = str(row.get("Folio", "")).strip()
-            if folio_number:
-                folio, _ = Folio.objects.get_or_create(
-                    manuscript=manuscript, folio_number=folio_number
-                )
-                alias.folios.add(folio)
 
 
 class LineCodeResource(resources.ModelResource):
