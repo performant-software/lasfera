@@ -636,7 +636,7 @@ def manuscript(request: HttpRequest, siglum: str):
         location = alias.location
         if location not in folio_map[folio]:
             display_name = (
-                alias.placename_modern or location.name or location.modern_country or ""
+                location.name or location.placename_modern or location.modern_country or ""
             ).strip()
 
             folio_map[folio][location] = {
@@ -685,34 +685,38 @@ def toponym_by_slug(request: HttpRequest, toponym_slug: str):
     """View a toponym by its slugified name"""
     # Try to find the toponym based on slugified name
     location = Location.objects.filter(slug=toponym_slug).first()
+    if location:
+        # Redirect to existing view using placename_id
+        return toponym(request, location.placename_id)
 
-    # If not found by name, check aliases
-    if not location:
-        alias = (
-            # Check all the possible name fields
-            LocationAlias.objects.annotate(
-                slug_modern=db_slug("placename_modern"),
-                slug_alias=db_slug("placename_alias"),
-                slug_ancient=db_slug("placename_ancient"),
-            )
-            .filter(
-                Q(slug_modern=toponym_slug)
-                | Q(slug_alias=toponym_slug)
-                | Q(slug_ancient=toponym_slug)
-            )
-            .select_related("location")
-            .first()
+    # try by modern or ancient name
+    by_modern_or_ancient = (
+        Location.objects.annotate(
+            slug_modern=db_slug("placename_modern"),
+            slug_ancient=db_slug("placename_ancient"),
         )
-        if alias:
-            # Alias slug is not canonical, so redirect to canonical url
-            return redirect(alias.location.get_absolute_url())
+        .filter(Q(slug_modern=toponym_slug) | Q(slug_ancient=toponym_slug))
+        .first()
+    )
+    if by_modern_or_ancient:
+        # Modern/ancient slug is not canonical, so redirect to canonical url
+        return redirect(by_modern_or_ancient.get_absolute_url())
 
-    if not location:
-        # If still not found, return 404
-        raise Http404(f"No toponym found with slug: {toponym_slug}")
+    # try alias
+    alias = (
+        LocationAlias.objects.annotate(
+            slug_alias=db_slug("placename_alias"),
+        )
+        .filter(slug_alias=toponym_slug)
+        .select_related("location")
+        .first()
+    )
+    if alias:
+        # Alias slug is not canonical, so redirect to canonical url
+        return redirect(alias.location.get_absolute_url())
 
-    # Redirect to existing view using placename_id
-    return toponym(request, location.placename_id)
+    # If still not found, return 404
+    raise Http404(f"No toponym found with slug: {toponym_slug}")
 
 
 def toponyms(request: HttpRequest):
@@ -740,37 +744,30 @@ def toponym(request: HttpRequest, placename_id: str):
     filtered_folios = filtered_toponym.folio_set.all()
     filtered_linecodes = filtered_toponym.line_codes.all()
 
-    manuscripts_with_iiif = filtered_manuscripts.exclude(
-        Q(iiif_url__isnull=True) | Q(iiif_url="")
-    ).values_list("siglum", "iiif_url")
+    # First get modern and ancient placenames (de-duplication with sets)
+    placename_moderns = set()
+    placename_ancients = set()
 
-    iiif_urls = dict(manuscripts_with_iiif)
+    if filtered_toponym.placename_modern:
+        for name in filtered_toponym.placename_modern.split(","):
+            clean_name = name.strip()
+            if clean_name and clean_name != "N/A":
+                placename_moderns.add(clean_name)
+                
+    if filtered_toponym.placename_ancient:
+        for name in filtered_toponym.placename_ancient.split(","):
+            clean_name = name.strip()
+            if clean_name and clean_name != "N/A":
+                placename_ancients.add(clean_name)
 
-    # First get aliases with related data
+    # Then get aliases with related data
     aliases = filtered_toponym.locationalias_set.all().select_related(
         "manuscript", "folio"
     )
 
-    # prep for de-duplication with sets
     grouped_aliases_dict = {}
-    placename_moderns = set()
-    placename_ancients = set()
-
-    # Then process aggregations
     for alias in aliases:
-        # de-dupe and filter ancient and modern names
-        if alias.placename_modern:
-            for name in alias.placename_modern.split(","):
-                clean_name = name.strip()
-                if clean_name != "N/A":
-                    placename_moderns.add(clean_name)
-        if alias.placename_ancient:
-            for name in alias.placename_ancient.split(","):
-                clean_name = name.strip()
-                if clean_name != "N/A":
-                    placename_ancients.add(clean_name)
         alias_name = alias.placename_alias
-
         # group variant names by spelling
         if alias_name:
             if alias_name not in grouped_aliases_dict:
@@ -778,7 +775,6 @@ def toponym(request: HttpRequest, placename_id: str):
                     "placename_alias": alias_name,
                     "manuscripts": set(),
                 }
-
             if alias.manuscript:
                 grouped_aliases_dict[alias_name]["manuscripts"].add(alias.manuscript)
 
@@ -842,12 +838,13 @@ def search_toponyms(request):
         alias_subquery = LocationAlias.objects.filter(
             # ensure we only return related Locations
             location=OuterRef("pk")
-        ).filter(
-            Q(placename_modern__icontains=query)
+        ).filter(placename_alias__icontains=query)
+        locations = locations.filter(
+            Q(name__icontains=query)
+            | Q(placename_modern__icontains=query)
             | Q(placename_ancient__icontains=query)
-            | Q(placename_alias__icontains=query)
+            | Exists(alias_subquery)
         )
-        locations = locations.filter(Q(name__icontains=query) | Exists(alias_subquery))
 
     # sort so it matches "all locations" queryset
     locations = locations.order_by("name")

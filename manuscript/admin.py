@@ -387,8 +387,8 @@ class LocationAdmin(ImportExportModelAdmin):
     list_display = (
         "placename_id",
         "name",
-        "get_placename_modern",
-        "get_placename_ancient",
+        "placename_ancient",
+        "placename_modern",
         "toponym_type",
         "place_type",
         "slug",
@@ -402,21 +402,6 @@ class LocationAdmin(ImportExportModelAdmin):
         return format_html(obj.description) if obj.description else ""
 
     description_html.short_description = "Description"
-
-    def get_placename_modern(self, obj):
-        # use prefetched LocationAlias set
-        aliases = obj.locationalias_set.all()
-        names = [a.placename_modern for a in aliases if a.placename_modern]
-        return ", ".join(set(names)) if names else "-"
-
-    get_placename_modern.short_description = "Modern Placename"
-
-    def get_placename_ancient(self, obj):
-        aliases = obj.locationalias_set.all()
-        names = [a.placename_ancient for a in aliases if a.placename_ancient]
-        return ", ".join(set(names)) if names else "-"
-
-    get_placename_ancient.short_description = "Ancient Placename"
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
@@ -439,8 +424,6 @@ class LocationAliasAdmin(ImportExportModelAdmin):
     list_display = (
         "location",
         "placename_alias",
-        "placename_ancient",
-        "placename_modern",
     )
     list_filter = ("location",)
     search_fields = ("placename_alias",)
