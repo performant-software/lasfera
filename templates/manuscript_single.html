@@ -205,7 +205,7 @@
                                     <td class="px-4 py-2">{{ folio.folio_number }}</td>
                                     <td class="px-4 py-2">
                                     {% for rel in folio.related_locations %}
-                                        <a href="{% url 'toponym_detail' rel.location.slug|slugify %}" class="underline hover:no-underline">{{ rel.display_name }}</a>
+                                        <a href="{% url 'toponym_detail' rel.location.slug %}" class="underline hover:no-underline">{{ rel.display_name }}</a>
                                     {% endfor %}
                                     </td>
                                 </tr>
