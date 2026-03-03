@@ -422,12 +422,15 @@ class LocationAdmin(ImportExportModelAdmin):
 class LocationAliasAdmin(ImportExportModelAdmin):
     resource_class = LocationAliasResource
     list_display = (
-        "location",
+        "id",
         "placename_alias",
+        "location",
+        "location__name",
+        "manuscript",
+        "folio",
     )
     list_filter = ("location",)
-    search_fields = ("placename_alias",)
-    raw_id_fields = ("location",)
+    search_fields = ("id", "placename_alias",)
 
 
 @admin.action(description="Set language of the selected stanza to Italian")
