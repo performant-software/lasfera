@@ -957,8 +957,8 @@ class LocationAlias(models.Model):
         max_length=255,
         blank=True,
         null=True,
-        verbose_name="Additional aliases",
-        help_text="Additional aliases for the placename.",
+        verbose_name="Alias",
+        help_text="An alias for the placename.",
     )
     location = models.ForeignKey(
         Location, on_delete=models.CASCADE, blank=True, null=True
@@ -971,6 +971,7 @@ class LocationAlias(models.Model):
     class Meta:
         verbose_name = "Toponym Alias"
         verbose_name_plural = "Toponym Aliases"
+        ordering = ["id"]
 
     def __str__(self) -> str:
         return f"Alias {self.id}: {self.placename_alias}"
