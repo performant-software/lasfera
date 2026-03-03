@@ -8,17 +8,22 @@ class ToponymSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Location
-        fields = ["id", "name", "slug", "modern_country", "latitude", "longitude", "aliases"]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "modern_country",
+            "placename_modern",
+            "placename_ancient",
+            "latitude",
+            "longitude",
+            "aliases",
+        ]
 
     def get_aliases(self, obj):
         aliases = (
             LocationAlias.objects.filter(location=obj)
-            .values(
-                "id",
-                "placename_modern",
-                "placename_alias",
-                "placename_ancient",
-            )
+            .values("id", "placename_alias")
             .distinct()
         )
         return list(aliases)

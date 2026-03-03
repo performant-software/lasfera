@@ -831,6 +831,20 @@ class Location(SlugModel):
         blank=False, null=False, verbose_name="Name", max_length=255, default=""
     )
     description = RichTextField(blank=True, null=True)
+    placename_modern = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Modern placename",
+        help_text="The modern name of the placename.",
+    )
+    placename_ancient = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Ancient placename",
+        help_text="The ancient name of the placename.",
+    )
     modern_country = models.CharField(
         max_length=255, blank=True, null=True, verbose_name="Modern Country"
     )
@@ -939,26 +953,12 @@ class LocationAlias(models.Model):
     """The alias of a location"""
 
     id = models.AutoField(primary_key=True)
-    placename_modern = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Modern placename",
-        help_text="The modern name of the placename.",
-    )
     placename_alias = models.CharField(
         max_length=255,
         blank=True,
         null=True,
         verbose_name="Additional aliases",
         help_text="Additional aliases for the placename.",
-    )
-    placename_ancient = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Ancient placename",
-        help_text="The ancient name of the placename.",
     )
     location = models.ForeignKey(
         Location, on_delete=models.CASCADE, blank=True, null=True
@@ -973,10 +973,7 @@ class LocationAlias(models.Model):
         verbose_name_plural = "Toponym Aliases"
 
     def __str__(self) -> str:
-        str_name = (
-            self.placename_alias or self.placename_modern or self.placename_ancient
-        )
-        return f"Alias {self.id}: {str_name}"
+        return f"Alias {self.id}: {self.placename_alias}"
 
 
 class ManuscriptFamily(models.Model):
