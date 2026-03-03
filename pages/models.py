@@ -3,6 +3,7 @@ from wagtail.contrib.routable_page.models import RoutablePageMixin, route
 from wagtail.fields import RichTextField, StreamField
 from wagtail.models import Page
 from wagtail.snippets.models import register_snippet
+from django.conf import settings
 from django.db import models
 
 from wagtail import blocks
@@ -73,3 +74,30 @@ class ManuscriptsIntroduction(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class DataPage(SitePage):
+    template = "pages/data_page.html"
+
+    def get_context(self, request):
+        """add our public export URLs to context to include in the template"""
+        context = super().get_context(request)
+        base_url = settings.MEDIA_URL.rstrip("/")
+        files = [
+            ("Manuscripts", "manuscripts"),
+            ("Folios", "folios"),
+            ("Stanzas (Italian)", "stanzas"),
+            ("Stanzas (English)", "translated_stanzas"),
+            ("Toponyms", "toponyms"),
+            ("Toponym Variants", "toponym_variants"),
+        ]
+        export_list = []
+        for label, slug in files:
+            export_list.append(
+                {
+                    "label": label,
+                    "csv": f"{base_url}/exports/{slug}.csv",
+                }
+            )
+        context["exports"] = export_list
+        return context
