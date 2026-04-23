@@ -99,10 +99,9 @@ document.addEventListener("DOMContentLoaded", function () {
         /* External link indicator */
         .annotation-content a[href^="http"]::after {
             content: "↗";
-            display: inline-block;
+            display: inline;
             margin-left: 2px;
             font-size: 0.8em;
-            transform: translateY(-1px);
         }
 
         .annotation-loading {
