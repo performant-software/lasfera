@@ -99,6 +99,7 @@ class DocumentResourceBlock(blocks.StructBlock):
 
 
 class DataPage(SitePage):
+    """Page type used only for the Data page"""
     template = "pages/data_page.html"
 
     additional_resources = StreamField(
