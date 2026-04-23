@@ -3,6 +3,7 @@ from import_export.widgets import ForeignKeyWidget, Widget
 from import_export.results import RowResult
 from django.contrib import messages
 from django.db.models import Q
+from django.utils.html import strip_tags
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,18 @@ from .models import (
     Location,
     LocationAlias,
     LineCode,
+    StanzaTranslated,
 )
+
+
+class ExportOnlyResource(resources.ModelResource):
+    """reusable base class to disable import functionality"""
+
+    def before_import(self, dataset, **kwargs):
+        raise NotImplementedError("Importing is disabled for this resource.")
+
+    def import_data(self, dataset, **kwargs):
+        raise NotImplementedError("Importing is disabled for this resource.")
 
 
 class FolioResource(resources.ModelResource):
@@ -145,6 +157,10 @@ class FolioResource(resources.ModelResource):
         """Define headers for the diff display"""
         return ["Manuscript", "Folio", "Start Line", "End Line"]
 
+    def get_queryset(self):
+        """optimize exports by fetching related fields in a single query"""
+        return self._meta.model.objects.select_related("manuscript").all()
+
 
 class SingleManuscriptResource(resources.ModelResource):
     class Meta:
@@ -191,8 +207,12 @@ class LocationResource(resources.ModelResource):
     placename_id = fields.Field(column_name="Place_ID", attribute="placename_id")
     name = fields.Field(column_name="HistEng_Name", attribute="name")
     place_type = fields.Field(column_name="Place_Type", attribute="place_type")
-    placename_modern = fields.Field(column_name="Mod_Name", attribute="placename_modern")
-    placename_ancient = fields.Field(column_name="Anc_Name", attribute="placename_ancient")
+    placename_modern = fields.Field(
+        column_name="Mod_Name", attribute="placename_modern"
+    )
+    placename_ancient = fields.Field(
+        column_name="Anc_Name", attribute="placename_ancient"
+    )
     latitude = fields.Field(
         column_name="Latitude", attribute="latitude", widget=widgets.FloatWidget()
     )
@@ -451,6 +471,12 @@ class LocationAliasResource(resources.ModelResource):
             instance, original, row, import_validation_errors=import_validation_errors
         )
 
+    def get_queryset(self):
+        """optimize exports by fetching related fields in a single query"""
+        return self._meta.model.objects.select_related(
+            "location", "manuscript", "folio"
+        ).all()
+
 
 class LineCodeResource(resources.ModelResource):
     """Resource for importing and exporting LineCode data"""
@@ -614,3 +640,51 @@ class LineCodeResource(resources.ModelResource):
     def get_diff_headers(self):
         """Define headers for the diff display"""
         return ["Code", "Toponyms"]
+
+
+class StanzaResource(ExportOnlyResource):
+    class Meta:
+        model = Stanza
+        fields = (
+            "id",
+            "stanza_line_code_starts",
+            "stanza_line_code_ends",
+            "stanza_text",
+            "stanza_notes",
+            "language",
+            "is_rubric",
+        )
+        export_order = fields
+
+    def dehydrate_stanza_text(self, instance):
+        return strip_tags(instance.stanza_text) if instance.stanza_text else ""
+
+    def dehydrate_stanza_notes(self, instance):
+        return strip_tags(instance.stanza_notes) if instance.stanza_notes else ""
+
+
+class StanzaTranslatedResource(ExportOnlyResource):
+    # export the line code of the parent stanza instead of just the id
+    parent_stanza_code = fields.Field(
+        attribute="stanza__stanza_line_code_starts", column_name="original_stanza_code"
+    )
+
+    class Meta:
+        model = StanzaTranslated
+        fields = (
+            "id",
+            "parent_stanza_code",
+            "stanza_line_code_starts",
+            "stanza_line_code_ends",
+            "stanza_text",
+            "language",
+            "is_rubric",
+        )
+        export_order = fields
+
+    def dehydrate_stanza_text(self, instance):
+        return strip_tags(instance.stanza_text) if instance.stanza_text else ""
+
+    def get_queryset(self):
+        """optimize exports by fetching related fields in a single query"""
+        return self._meta.model.objects.select_related("stanza").all()

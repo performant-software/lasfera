@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load wagtailcore_tags %}
+
+{% block title %}{{ page.title }} - La Sfera{% endblock title %}
+
+{% block content %}
+    <div class="mx-auto container pt-3">
+        <section class="w-full p-4 my-10">
+            <h3 class="text-4xl pb-4 font-bold" id="top">
+                {{ page.title }}
+            </h3>
+
+            <div class="grid grid-cols-3 gap-4">
+                {# Left Column (2/3) #}
+                <section id="page" class="prose col-span-2">
+                    {% include_block page.body %}
+                </section>
+
+                {# Right Column (1/3) #}
+                <aside class="prose border-l border-gray-200 pl-5">
+                    {# Automated CSV data exports #}
+                    {% if exports %}
+                        <h4 class="font-bold mb-2">Data Exports</h4>
+                        <ul>
+                            {% for export in exports %}
+                                <li>
+                                    <a href="{{ export.csv }}" class="underline hover:no-underline" download>{{ export.label }} (CSV)</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                    {# Additional Resources (uploads and external links) #}
+                    {% if page.additional_resources %}
+                        <h4 class="font-bold {% if exports %}mt-6{% endif %} mb-2">Additional Resources</h4>
+                        <ul>
+                            {% for block in page.additional_resources %}
+                                <li>
+                                    {% if block.block_type == 'link' %}
+                                        <a href="{{ block.value.url }}" class="underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                                            {{ block.value.title }}
+                                        </a>
+                                    {% elif block.block_type == 'document' %}
+                                        <a href="{{ block.value.document.url }}" class="underline hover:no-underline" download>
+                                            {{ block.value.title|default:block.value.document.title }}
+                                        </a>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </aside>
+            </div>
+        </section>
+    </div>
+{% endblock %}

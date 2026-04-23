@@ -140,3 +140,9 @@ class TextualVariantResource(resources.ModelResource):
     def get_instance(self, instance_loader, row):
         """update any existing records by VariantID"""
         return self.get_queryset().filter(variant_id=row.get("VariantID")).first()
+
+    def get_queryset(self):
+        """optimize exports by fetching related fields in a single query"""
+        return self._meta.model.objects.select_related(
+            "manuscript", "content_type"
+        ).all()
