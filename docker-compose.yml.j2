@@ -21,7 +21,7 @@ services:
       - DB_PORT={{ template.env.host_db_port }}
       - DB_NAME={{ template.env.db_name }}
       - DB_USER={{ template.env.db_user }}
-      - DB_PASSWORD={{ template.env.db_pass }}
+      - DB_PASS={{ template.env.db_pass }}
     command: >
       sh -c "
         poetry run python manage.py migrate &&

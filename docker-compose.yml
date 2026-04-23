@@ -15,7 +15,7 @@ services:
       - DB_PORT=5432
       - DB_NAME=lasfera
       - DB_USER=lasfera
-      - DB_PASSWORD=password
+      - DB_PASS=password
     depends_on:
       db:
         condition: service_healthy
