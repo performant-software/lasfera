@@ -88,6 +88,7 @@ class DataPage(SitePage):
             ("Folios", "folios"),
             ("Stanzas (Italian)", "stanzas"),
             ("Stanzas (English)", "translated_stanzas"),
+            ("Textual Variants", "textual_variants"),
             ("Toponyms", "toponyms"),
             ("Toponym Variants", "toponym_variants"),
         ]
