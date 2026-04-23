@@ -78,92 +78,96 @@
 {% block content %}
   <div class="mx-auto">
     <section class="w-full p-4 mt-7 mb-10">
-    <!-- Title and Hamburger Menu -->
-      <div class="sticky top-0 bg-white z-10 flex justify-between items-center mb-5 shadow-md shadow-white py-3">
+      <!-- Title and Hamburger Menu -->
+      <div class="sticky top-16 bg-white z-40 flex justify-between items-center mb-5 shadow-md shadow-white py-3">
         <h3 class="text-4xl font-bold" id="top">
           <em>La sfera (The Globe)</em> by Gregorio Dati
         </h3>
-        
-        <!-- Hamburger Menu -->
-        <div x-data="{ isOpen: false }" class="relative">
-          <button 
-            @click="isOpen = !isOpen" 
-            class="hamburger-menu"
-            aria-label="Toggle filter options"
-          >
-            <span class="mr-2 text-gray-700">Options</span>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
 
-          <!-- Filter Panel -->
-          <div 
-            x-show="isOpen" 
-            @click.away="isOpen = false"
-            x-transition:enter="transition ease-out duration-200"
-            x-transition:enter-start="opacity-0 transform scale-95"
-            x-transition:enter-end="opacity-100 transform scale-100"
-            x-transition:leave="transition ease-in duration-150"
-            x-transition:leave-start="opacity-100 transform scale-100"
-            x-transition:leave-end="opacity-0 transform scale-95"
-            class="filter-panel"
+        <!-- Book Select -->
+        <div class="flex items-center gap-4">
+          <label for="book-select-quick" class="text-gray-700 whitespace-nowrap">
+            Jump to book:
+          </label>
+          <select
+            id="book-select-quick"
+            onchange="if(this.value) window.location.href = this.value;"
+            class="py-2 pl-3 pr-8 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 text-gray-700 text-sm cursor-pointer hover:bg-gray-50 transition-colors"
+            aria-label="Jump to a book"
           >
-            <div class="border border-gray-300 rounded-lg">
-              <div class="p-4 border-b border-gray-300 bg-gray-100 rounded-t-lg">
-                <div class="flex items-center justify-between">
-                  <span class="font-semibold">Text Options</span>
-                  <button @click="isOpen = false" class="text-gray-500 hover:text-gray-700">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                    </svg>
-                  </button>
+            <option value="" disabled selected>Select a book...</option>
+            <option value="#libro-1">Book/Libro 1</option>
+            <option value="#libro-2">Book/Libro 2</option>
+            <option value="#libro-3">Book/Libro 3</option>
+            <option value="#libro-4">Book/Libro 4</option>
+          </select>
+
+          <!-- Hamburger Menu -->
+          <div x-data="{ isOpen: false }" class="relative">
+            <button 
+              @click="isOpen = !isOpen" 
+              class="hamburger-menu"
+              aria-label="Toggle filter options"
+            >
+              <span class="mr-2 text-gray-700">Options</span>
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            <!-- Filter Panel -->
+            <div 
+              x-show="isOpen" 
+              @click.away="isOpen = false"
+              x-transition:enter="transition ease-out duration-200"
+              x-transition:enter-start="opacity-0 transform scale-95"
+              x-transition:enter-end="opacity-100 transform scale-100"
+              x-transition:leave="transition ease-in duration-150"
+              x-transition:leave-start="opacity-100 transform scale-100"
+              x-transition:leave-end="opacity-0 transform scale-95"
+              class="filter-panel"
+            >
+              <div class="border border-gray-300 rounded-lg">
+                <div class="p-4 border-b border-gray-300 bg-gray-100 rounded-t-lg">
+                  <div class="flex items-center justify-between">
+                    <span class="font-semibold">Text Options</span>
+                    <button @click="isOpen = false" class="text-gray-500 hover:text-gray-700">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div class="p-4 bg-white rounded-b-lg">
-                <div class="grid grid-cols-1 gap-4">
+                <div class="p-4 bg-white rounded-b-lg">
+                  <div class="grid grid-cols-1 gap-4">
 
-                  <!-- Manuscript Select -->
-                  <div class="w-full">
-                    <label for="manuscript-select" class="block text-gray-700 text-sm font-bold mb-2">Select Manuscript:</label>
-                    <select 
-                      id="manuscript-select" 
-                      onchange="window.location.href=`/manuscripts/${this.value}/stanzas/`"
-                      class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                      {% for manuscript in manuscripts %}
-                          {% if manuscript.iiif_url or manuscript.has_variants %}
-                          <option value="{{ manuscript.siglum }}"
-                                  {% if manuscript.siglum == default_manuscript.siglum %}selected{% endif %}>
-                            {{ manuscript|format_ms }}
-                          </option>
-                          {% endif %}
-                      {% endfor %}
-                    </select>
-                  </div>
-
-                  <!-- Book Select -->
-                  <div class="w-full">
-                    <label for="book-select" class="block text-gray-700 text-sm font-bold mb-2">Jump to a book:</label>
-                    <select
-                      id="book-select"
-                      x-on:change="window.location.href = $event.target.value; isOpen = false"
-                      class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    >
-                      <option value="#libre-1">Book/Libro 1</option>
-                      <option value="#libre-2">Book/Libro 2</option>
-                      <option value="#libre-3">Book/Libro 3</option>
-                      <option value="#libre-4">Book/Libro 4</option>
-                    </select>
-                  </div>
-                  
-                  <!-- Line Code Display -->
-                  <div class="w-full">
-                    <label for="lineCodeDisplay" class="block text-gray-700 text-sm font-bold mb-2">Line code display:</label>
-                    <select id="lineCodeDisplay" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                      <option value="full">Show line codes</option>
-                      <option value="shortened">Show shortened line codes</option>
-                      <option value="hidden" selected>Hide line codes</option>
-                    </select>
+                    <!-- Manuscript Select -->
+                    <div class="w-full">
+                      <label for="manuscript-select" class="block text-gray-700 text-sm font-bold mb-2">Select Manuscript:</label>
+                      <select 
+                        id="manuscript-select" 
+                        onchange="window.location.href=`/manuscripts/${this.value}/stanzas/`"
+                        class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        {% for manuscript in manuscripts %}
+                            {% if manuscript.iiif_url or manuscript.has_variants %}
+                            <option value="{{ manuscript.siglum }}"
+                                    {% if manuscript.siglum == default_manuscript.siglum %}selected{% endif %}>
+                              {{ manuscript|format_ms }}
+                            </option>
+                            {% endif %}
+                        {% endfor %}
+                      </select>
+                    </div>
+                    
+                    <!-- Line Code Display -->
+                    <div class="w-full">
+                      <label for="lineCodeDisplay" class="block text-gray-700 text-sm font-bold mb-2">Line code display:</label>
+                      <select id="lineCodeDisplay" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="full">Show line codes</option>
+                        <option value="shortened">Show shortened line codes</option>
+                        <option value="hidden" selected>Hide line codes</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -172,41 +176,39 @@
         </div>
       </div>
 
-    <!-- Main content wrapper -->
+      <!-- Main content wrapper -->
       <div class="flex w-full gap-8">
-      <!-- Text content -->
+        <!-- Text content -->
         <div class="w-2/3">
           <div class="space-y-4">
             {% for book_number, stanza_pairs in paired_books.items %}
               <div>
-              <!-- Book headers -->
+                <!-- Book headers -->
                 <div class="grid grid-cols-2 gap-8 mb-4">
                   <div>
-                    <h2 id="libre-{{book_number}}" class="text-xl font-serif font-bold mb-4">Libro {{ book_number }}</h2>
+                    <h2 id="libro-{{book_number}}" class="text-xl font-serif font-bold mb-4 scroll-mt-36">Libro {{ book_number }}</h2>
                   </div>
                   <div>
-                    <h2 id="book-{{book_number}}" class="text-xl font-serif font-bold mb-4">Book {{ book_number }}</h2>
+                    <h2 id="book-{{book_number}}" class="text-xl font-serif font-bold mb-4 scroll-mt-36">Book {{ book_number }}</h2>
                   </div>
                 </div>
-
-              <!-- Stanza pairs -->
-              {% for stanza_pair in stanza_pairs %}
-              {% if stanza_pair.new_folio and stanza_pair.current_folio %}
-<div class="col-span-2 relative flex items-center my-6 folio-divider" data-folio-number="{{ stanza_pair.current_folio.folio_number }}">
-  <div class="font-medium text-gray-500 pr-4">
-    Folio {{ stanza_pair.current_folio.folio_number }}
-  </div>
-  <div class="flex-grow border-t border-gray-300"></div>
-</div>
-{% endif %}
-                            <div class="grid grid-cols-2 gap-8 mb-8">
-                    
+                <!-- Stanza pairs -->
+                {% for stanza_pair in stanza_pairs %}
+                  {% if stanza_pair.new_folio and stanza_pair.current_folio %}
+                    <div class="col-span-2 relative flex items-center my-6 folio-divider" data-folio-number="{{ stanza_pair.current_folio.folio_number }}">
+                      <div class="font-medium text-gray-500 pr-4">
+                        Folio {{ stanza_pair.current_folio.folio_number }}
+                      </div>
+                      <div class="flex-grow border-t border-gray-300"></div>
+                    </div>
+                  {% endif %}
+                  <div class="grid grid-cols-2 gap-8 mb-8">
                     <!-- Original stanza -->
                     <div class="w-full">
                       {% for stanza in stanza_pair.original %}
                         <div class="relative">
                           <div class="flex gap-2 items-start">
-                            <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-20" 
+                            <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-36" 
                                 href="{% url 'manuscript_stanzas' default_manuscript.siglum %}#{{stanza.stanza_line_code_starts}}"
                                 id="{{stanza.stanza_line_code_starts}}"
                                 title="Anchor link to line code {{ stanza.stanza_line_code_starts}}"
@@ -225,13 +227,12 @@
                         </div>
                       {% endfor %}
                     </div>
-
-                  <!-- Translated stanza -->
+                    <!-- Translated stanza -->
                     <div class="w-full">
                       {% for stanza in stanza_pair.translated %}
                         <div class="relative">
                           <div class="flex gap-2 items-start">
-                            <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-20" href="#{{stanza.stanza_line_code_starts}}"
+                            <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-36" href="#{{stanza.stanza_line_code_starts}}"
                                 id="{{stanza.stanza_line_code_starts}}">
                               <span class="line-text font-serif text-red-700 text-sm">
                                 {{ stanza.stanza_line_code_starts }}
@@ -246,8 +247,7 @@
                     </div>
                   </div>
                 {% endfor %}
-
-              <!-- Book separator -->
+                <!-- Book separator -->
                 <div class="flex items-center my-16 py-4">
                   <div class="flex-grow border-t border-slate-300"></div>
                   <span class="mx-4 text-slate-300 text-4xl">❦</span>
@@ -264,9 +264,9 @@
               x-data="tifyViewer"
               data-has-known-folios="{{ has_known_folios|lower }}"
               data-manifest-url="{{ manuscript.iiif_url }}">
-            <div class="sticky pt-8 top-11">
+            <div class="sticky pt-8 top-32">
               <div class="bg-white rounded-lg shadow-lg">
-                <div id="tify-container" class="w-full h-[calc(100vh-4.5rem)]"></div>
+                <div id="tify-container" class="w-full h-[calc(100vh-10rem)]"></div>
               </div>
             </div>
           </div>
@@ -277,7 +277,7 @@
         {% endif %}
       </div>
 
-    <!-- Return to top button -->
+      <!-- Return to top button -->
       <div id="return-to-top" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-lasfera-red text-white rounded-full shadow-lg p-2 opacity-0 transition duration-500 ease-in-out invisible hover:-translate-y-1 hover:scale-110 hover:bg-white hover:text-black">
         <a href="#top">Return to top &uarr;</a>
       </div>
