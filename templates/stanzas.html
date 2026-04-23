@@ -149,10 +149,10 @@
                       x-on:change="window.location.href = $event.target.value; isOpen = false"
                       class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     >
-                      <option value="#libre-1">Book/Libro 1</option>
-                      <option value="#libre-2">Book/Libro 2</option>
-                      <option value="#libre-3">Book/Libro 3</option>
-                      <option value="#libre-4">Book/Libro 4</option>
+                      <option value="#libro-1">Book/Libro 1</option>
+                      <option value="#libro-2">Book/Libro 2</option>
+                      <option value="#libro-3">Book/Libro 3</option>
+                      <option value="#libro-4">Book/Libro 4</option>
                     </select>
                   </div>
                   
@@ -182,7 +182,7 @@
               <!-- Book headers -->
                 <div class="grid grid-cols-2 gap-8 mb-4">
                   <div>
-                    <h2 id="libre-{{book_number}}" class="text-xl font-serif font-bold mb-4">Libro {{ book_number }}</h2>
+                    <h2 id="libro-{{book_number}}" class="text-xl font-serif font-bold mb-4">Libro {{ book_number }}</h2>
                   </div>
                   <div>
                     <h2 id="book-{{book_number}}" class="text-xl font-serif font-bold mb-4">Book {{ book_number }}</h2>
