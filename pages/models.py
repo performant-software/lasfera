@@ -77,6 +77,7 @@ class ManuscriptsIntroduction(models.Model):
 
 
 class ExternalLinkBlock(blocks.StructBlock):
+    """Block for adding external links to the data page"""
     title = blocks.CharBlock(required=True, help_text="Text to display for the link")
     url = blocks.URLBlock(required=True, label="URL")
 
@@ -86,6 +87,7 @@ class ExternalLinkBlock(blocks.StructBlock):
 
 
 class DocumentResourceBlock(blocks.StructBlock):
+    """Block for adding document uploads to the data page"""
     title = blocks.CharBlock(
         required=False, help_text="Optional: Override the document's original filename"
     )
