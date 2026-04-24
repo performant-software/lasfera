@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static wagtailcore_tags %}
+{% load static wagtailcore_tags wagtailimages_tags %}
 
 {% block title %}
     Home -  La Sfera
@@ -67,47 +67,46 @@
                     {% include_block intro.body %}
                 </div>
             {% else %}
-                <h2 class="text-3xl font-bold text-gray-900 mb-6">Welcome to the La Sfera Project</h2>
-                <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-                    The La Sfera Project brings to life a remarkable 15th-century Italian manuscript.
-                </p>
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">Welcome to La Sfera!</h2>
             {% endif %}
         </div>
     </div>
 </div>
 
-    <!-- Main Navigation Sections -->
-    <div class="bg-white mb-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {% for item in nav_items %}
+<!-- Navigation cards -->
+<div class="bg-white mb-12 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+    {% for block in intro.navigation_cards %}
+      {% with item=block.value %}
         <div class="bg-gray-50 p-5 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <div class="flex space-x-4">
-                <!-- Thumbnail -->
-                <div class="flex-shrink-0">
-                    <img 
-                        src="{% if item.thumbnail %}{{ item.thumbnail }}{% else %}{% static 'images/home/wellcome230_p44.webp' %}{% endif %}" 
-                        alt="{{ item.name }} thumbnail"
-                        class="w-20 h-20 object-cover rounded-lg"
-                    >
-                </div>
-                
-                <!-- Content -->
-                <div class="flex-1">
-                    <h3 class="text-xl text-gray-900 mb-2">{{ item.name }}</h3>
-                    <p class="text-gray-600 mb-3 text-base">
-                        Explore the {{ item.name|lower }} section of our digital manuscript edition.
-                    </p>
-                    <a
-                        href="{{ item.url }}"
-                        class="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                    >
-                        More →
-                    </a>
-                </div>
+          <div class="flex space-x-4">
+            <!-- Thumbnail -->
+            <div class="flex-shrink-0">
+              {% image item.image fill-80x80 as img %}
+              <img 
+                src="{{ img.url }}" 
+                alt="{{ item.title }} thumbnail"
+                class="w-20 h-20 object-cover rounded-lg"
+              >
             </div>
+            <!-- Content -->
+            <div class="flex-1">
+              <h3 class="text-xl text-gray-900 mb-2">{{ item.title }}</h3>
+              <p class="text-gray-600 mb-3 text-base">
+                {{ item.description }}
+              </p>
+              <a
+                href="{{ item.url }}"
+                class="text-blue-600 hover:text-blue-800 font-medium text-sm"
+              >
+                More →
+              </a>
+            </div>
+          </div>
         </div>
-        {% endfor %}
-    </div>
+      {% endwith %}
+    {% endfor %}
+  </div>
 </div>
 
 <script>
