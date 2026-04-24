@@ -467,41 +467,9 @@ def index(request: HttpRequest):
     # Shuffle the image URLs to simulate randomness
     random.shuffle(image_urls)
 
-    # get wagtail urls programmatically
-    about_page = AboutPage.objects.live().first()
-    resources_page = SitePage.objects.live().filter(slug="resources").first()
-    gallery_index_page = GalleryIndexPage.objects.live().first()
-
     context = {
         "manuscript_images": image_urls,
         "intro": intro,  # via Wagtail
-        "nav_items": [
-            {
-                "name": "Edition",
-                "url": reverse("manuscript_stanzas", kwargs={"siglum": "Urb1"}),
-                "thumbnail": static("images/home/wellcome230_p44.webp"),
-            },
-            {
-                "name": "Gazetteer",
-                "url": reverse("toponyms"),
-                "thumbnail": static("images/home/bncf_csopp2618_m1b.webp"),
-            },
-            {
-                "name": "Resources",
-                "url": resources_page.url if resources_page else "#",
-                "thumbnail": static("images/home/basel_cl194_p59.webp"),
-            },
-            {
-                "name": "Gallery",
-                "url": gallery_index_page.url if gallery_index_page else "#",
-                "thumbnail": static("images/home/nypl_f1v_ship.webp"),
-            },
-            {
-                "name": "About",
-                "url": about_page.url if about_page else "#",
-                "thumbnail": static("images/home/oxford74_jerusalem.webp"),
-            },
-        ],
     }
     return render(request, "index.html", context)
 

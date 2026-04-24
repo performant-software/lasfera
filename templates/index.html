@@ -1,252 +1,250 @@
 {% extends "base.html" %}
-{% load static wagtailcore_tags %}
+{% load static wagtailcore_tags wagtailimages_tags %}
 
 {% block title %}
-    Home -  La Sfera
+  Home -  La Sfera
 {% endblock title %}
 
 {% block home %}
-<div class="relative h-screen overflow-hidden bg-gray-900">
-  <div 
-        x-data="imageGrid"
-        class="absolute inset-0 grid grid-cols-3 gap-1 p-1 z-10">
-        <template x-for="(tile, index) in tiles" :key="index">
-            <div 
-                class="relative overflow-hidden h-full cursor-pointer image-tile"
-            >
-                <!-- Current image with fade-out transition -->
-                <img 
-                    :src="tile.currentImage" 
-                    :alt="'Manuscript tile ' + index"
-                    class="absolute inset-0 w-full h-full object-cover"
-                />
-                
-                <!-- Next image with fade-in transition -->
-                <template x-if="tile.nextImage">
-                    <img 
-                        :src="tile.nextImage" 
-                        :alt="'Manuscript tile ' + index + ' next'"
-                        class="absolute inset-0 w-full h-full object-cover"
-                    />
-                </template>
-                
-                <!-- Individual dark overlay that disappears on hover -->
-                <div class="tile-overlay"></div>
-            </div>
-        </template>
-    </div>
-
-        <!-- Hero Content -->
-        <div class="relative z-20 h-full flex items-center pointer-events-none">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-white text-center pointer-events-auto">
-                <h1 class="text-5xl md:text-6xl font-bold mb-6">
-                   <em>La Sfera</em> &middot; The Globe
-                </h1>
-                <p class="text-xl md:text-2xl max-w-3xl mx-auto text-gray-200">
-                    Welcome to Gregorio Dati’s world! Come explore the late medieval globe, as described by a Florentine merchant in the Mediterranean at the turn of the 15th century.
-                </p>
-            </div>
+  <div class="relative h-screen overflow-hidden bg-gray-900">
+    <div 
+      x-data="imageGrid"
+      class="absolute inset-0 grid grid-cols-3 gap-1 p-1 z-10"
+    >
+      <template x-for="(tile, index) in tiles" :key="index">
+        <div 
+          class="relative overflow-hidden h-full cursor-pointer image-tile"
+        >
+          <!-- Current image with fade-out transition -->
+          <img 
+            :src="tile.currentImage" 
+            :alt="'Manuscript tile ' + index"
+            class="absolute inset-0 w-full h-full object-cover"
+          /> 
+          <!-- Next image with fade-in transition -->
+          <template x-if="tile.nextImage">
+            <img 
+              :src="tile.nextImage" 
+              :alt="'Manuscript tile ' + index + ' next'"
+              class="absolute inset-0 w-full h-full object-cover"
+            />
+          </template>
+          <!-- Individual dark overlay that disappears on hover -->
+          <div class="tile-overlay"></div>
         </div>
-
-        <!-- Down Chevron -->
-        <div class="absolute bottom-14 left-1/2 transform -translate-x-1/2 z-20 text-white animate-bounce pointer-events-auto">
-            <a href="#content" class="flex flex-col items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
-            </a>
-        </div>
+      </template>
     </div>
+    <!-- Hero Content -->
+    <div class="relative z-20 h-full flex items-center pointer-events-none">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-white text-center pointer-events-auto">
+        <h1 class="text-5xl md:text-6xl font-bold mb-6">
+          <em>La Sfera</em> &middot; The Globe
+        </h1>
+        <p class="text-xl md:text-2xl max-w-3xl mx-auto text-gray-200">
+          Welcome to Gregorio Dati&rsquo;s world! Come explore the late medieval globe,
+          as described by a Florentine merchant in the Mediterranean at the turn of the
+          15th century.
+        </p>
+      </div>
+    </div>
+    <!-- Down Chevron -->
+    <div class="absolute bottom-14 left-1/2 transform -translate-x-1/2 z-20 text-white animate-bounce pointer-events-auto">
+      <a href="#content" class="flex flex-col items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </a>
+    </div>
+  </div>
 
-    <div id="content" class="bg-white py-12 px-4 sm:px-6 lg:px-8">
+  <div id="content" class="bg-white py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-7xl mx-auto">
-        <div class="mx-auto">
-            {% if intro %}
-                <h2 class="text-3xl font-bold text-gray-900 mb-6 max-w-3xl mx-auto">{{ intro.title }}</h2>
-                <div class="text-xl text-gray-600 max-w-3xl mx-auto">
-                    {% include_block intro.body %}
-                </div>
-            {% else %}
-                <h2 class="text-3xl font-bold text-gray-900 mb-6">Welcome to the La Sfera Project</h2>
-                <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-                    The La Sfera Project brings to life a remarkable 15th-century Italian manuscript.
-                </p>
-            {% endif %}
-        </div>
+      <div class="mx-auto">
+        {% if intro %}
+          <h2 class="text-3xl font-bold text-gray-900 mb-6 max-w-3xl mx-auto">{{ intro.title }}</h2>
+          <div class="text-xl text-gray-600 max-w-3xl mx-auto">
+              {% include_block intro.body %}
+          </div>
+        {% else %}
+          <h2 class="text-3xl font-bold text-gray-900 mb-6">Welcome to La Sfera!</h2>
+        {% endif %}
+      </div>
     </div>
-</div>
+  </div>
 
-    <!-- Main Navigation Sections -->
-    <div class="bg-white mb-12 px-4 sm:px-6 lg:px-8">
+  <!-- Navigation cards -->
+  <div class="bg-white mb-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {% for item in nav_items %}
-        <div class="bg-gray-50 p-5 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+      {% for block in intro.navigation_cards %}
+        {% with item=block.value %}
+          <div class="bg-gray-50 p-5 rounded-lg shadow-sm hover:shadow-md transition-shadow">
             <div class="flex space-x-4">
-                <!-- Thumbnail -->
-                <div class="flex-shrink-0">
-                    <img 
-                        src="{% if item.thumbnail %}{{ item.thumbnail }}{% else %}{% static 'images/home/wellcome230_p44.webp' %}{% endif %}" 
-                        alt="{{ item.name }} thumbnail"
-                        class="w-20 h-20 object-cover rounded-lg"
-                    >
-                </div>
-                
-                <!-- Content -->
-                <div class="flex-1">
-                    <h3 class="text-xl text-gray-900 mb-2">{{ item.name }}</h3>
-                    <p class="text-gray-600 mb-3 text-base">
-                        Explore the {{ item.name|lower }} section of our digital manuscript edition.
-                    </p>
-                    <a
-                        href="{{ item.url }}"
-                        class="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                    >
-                        More →
-                    </a>
-                </div>
+              <!-- Thumbnail -->
+              <div class="flex-shrink-0">
+                {% image item.image fill-80x80 as img %}
+                <img 
+                  src="{{ img.url }}" 
+                  alt="{{ item.title }} thumbnail"
+                  class="w-20 h-20 object-cover rounded-lg"
+                >
+              </div>
+              <!-- Content -->
+              <div class="flex-1">
+                <h3 class="text-xl text-gray-900 mb-2">{{ item.title }}</h3>
+                <p class="text-gray-600 mb-3 text-base">
+                  {{ item.description }}
+                </p>
+                <a
+                  href="{{ item.url }}"
+                  class="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                >
+                  More →
+                </a>
+              </div>
             </div>
-        </div>
-        {% endfor %}
+          </div>
+        {% endwith %}
+      {% endfor %}
     </div>
-</div>
+  </div>
 
-<script>
+  <script>
     document.addEventListener('alpine:init', () => {
-    Alpine.store('images', {{ manuscript_images|safe }});
-    
-    Alpine.data('imageGrid', () => ({
-      tiles: Array(9).fill().map(() => ({
-        currentImage: null,
-        nextImage: null,
-        isTransitioning: false
-      })),
-      
-      init() {
-        // Initialize tiles with random images
-        const imagePool = Alpine.store('images');
-        
-        // Ensure we have enough images
-        if (imagePool.length < 9) {
-          console.warn('Not enough images in pool');
-          while (imagePool.length < 9) {
-            imagePool.push(...imagePool);
+      Alpine.store('images', {{ manuscript_images|safe }});
+
+      Alpine.data('imageGrid', () => ({
+        tiles: Array(9).fill().map(() => ({
+          currentImage: null,
+          nextImage: null,
+          isTransitioning: false
+        })),
+
+        init() {
+          // Initialize tiles with random images
+          const imagePool = Alpine.store('images');
+
+          // Ensure we have enough images
+          if (imagePool.length < 9) {
+            console.warn('Not enough images in pool');
+            while (imagePool.length < 9) {
+              imagePool.push(...imagePool);
+            }
           }
-        }
-        
-        // Generate initial set of images with no duplicates
-        const usedImages = new Set();
-        this.tiles = Array(9).fill().map(() => {
-          // Get a random image not yet used
-          let image;
-          do {
-            image = imagePool[Math.floor(Math.random() * imagePool.length)];
-          } while (usedImages.has(image) && usedImages.size < imagePool.length);
-          
-          usedImages.add(image);
-          
-          return {
-            currentImage: image,
-            nextImage: null,
-            isTransitioning: false
+
+          // Generate initial set of images with no duplicates
+          const usedImages = new Set();
+          this.tiles = Array(9).fill().map(() => {
+            // Get a random image not yet used
+            let image;
+            do {
+              image = imagePool[Math.floor(Math.random() * imagePool.length)];
+            } while (usedImages.has(image) && usedImages.size < imagePool.length);
+
+            usedImages.add(image);
+
+            return {
+              currentImage: image,
+              nextImage: null,
+              isTransitioning: false
+            };
+          });
+
+          // Set up rotation intervals for each tile
+          this.tiles.forEach((_, index) => {
+            this.setupTileInterval(index);
+          });
+        },
+
+        getRandomImage(excludeImages = []) {
+          const imagePool = Alpine.store('images');
+          // Filter out images that are excluded
+          const availableImages = imagePool.filter(img => !excludeImages.includes(img));
+
+          // If we have available images, use them
+          if (availableImages.length > 0) {
+            return availableImages[Math.floor(Math.random() * availableImages.length)];
+          }
+
+          // Fallback to any random image if no available images (shouldn't happen)
+          return imagePool[Math.floor(Math.random() * imagePool.length)];
+        },
+
+        setupTileInterval(index) {
+          // Random interval between 8-12 seconds
+          const interval = 8000 + Math.random() * 4000;
+
+          setInterval(() => {
+            this.performCrossFadeTransition(index);
+          }, interval);
+        },
+
+        performCrossFadeTransition(index) {
+          // Get next image
+          const currentlyDisplayedImages = this.tiles
+            .map(tile => tile.currentImage)
+            .filter(img => img !== this.tiles[index].currentImage);
+
+          const nextImage = this.getRandomImage(currentlyDisplayedImages);
+
+          // Create a new image object to preload
+          const preloadImage = new Image();
+          preloadImage.src = nextImage;
+
+          // Once the image is loaded, start the transition
+          preloadImage.onload = () => {
+            // Set the next image (but it's still invisible)
+            this.tiles[index].nextImage = nextImage;
+
+            // Force browser repaint to ensure both images are in the DOM
+            void document.body.offsetHeight;
+
+            // Start the cross-fade transition
+            this.tiles[index].isTransitioning = true;
+
+            // After transition completes, swap images and reset
+            setTimeout(() => {
+              this.tiles[index].currentImage = nextImage;
+              this.tiles[index].nextImage = null;
+              this.tiles[index].isTransitioning = false;
+            }, 1500); // Match this to CSS transition duration
           };
-        });
+        },
 
-        // Set up rotation intervals for each tile
-        this.tiles.forEach((_, index) => {
-          this.setupTileInterval(index);
-        });
-      },
+        // No hover events needed since we're using Tailwind's group-hover
+      }));
+    });
+  </script>
 
-      getRandomImage(excludeImages = []) {
-        const imagePool = Alpine.store('images');
-        // Filter out images that are excluded
-        const availableImages = imagePool.filter(img => !excludeImages.includes(img));
-        
-        // If we have available images, use them
-        if (availableImages.length > 0) {
-          return availableImages[Math.floor(Math.random() * availableImages.length)];
-        }
-        
-        // Fallback to any random image if no available images (shouldn't happen)
-        return imagePool[Math.floor(Math.random() * imagePool.length)];
-      },
+  <!-- Vanilla JavaScript hover detection for overlay -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      console.log('DOM loaded - setting up hover handlers');
 
-      setupTileInterval(index) {
-        // Random interval between 8-12 seconds
-        const interval = 8000 + Math.random() * 4000;
-        
-        setInterval(() => {
-          this.performCrossFadeTransition(index);
-        }, interval);
-      },
-      
-      performCrossFadeTransition(index) {
-        // Get next image
-        const currentlyDisplayedImages = this.tiles
-          .map(tile => tile.currentImage)
-          .filter(img => img !== this.tiles[index].currentImage);
-        
-        const nextImage = this.getRandomImage(currentlyDisplayedImages);
-        
-        // Create a new image object to preload
-        const preloadImage = new Image();
-        preloadImage.src = nextImage;
-        
-        // Once the image is loaded, start the transition
-        preloadImage.onload = () => {
-          // Set the next image (but it's still invisible)
-          this.tiles[index].nextImage = nextImage;
-          
-          // Force browser repaint to ensure both images are in the DOM
-          void document.body.offsetHeight;
-          
-          // Start the cross-fade transition
-          this.tiles[index].isTransitioning = true;
-          
-          // After transition completes, swap images and reset
-          setTimeout(() => {
-            this.tiles[index].currentImage = nextImage;
-            this.tiles[index].nextImage = null;
-            this.tiles[index].isTransitioning = false;
-          }, 1500); // Match this to CSS transition duration
-        };
-      },
-      
-      // No hover events needed since we're using Tailwind's group-hover
-    }));
-  });
- </script>
-       
-<!-- Vanilla JavaScript hover detection for overlay -->
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded - setting up hover handlers');
-    
-    // Wait for Alpine.js to finish rendering
-    setTimeout(function() {
-      const tiles = document.querySelectorAll('.image-tile');
-      console.log('Found', tiles.length, 'image tiles');
-      
-      tiles.forEach((tile, index) => {
-        console.log('Setting up events for tile', index);
-        
-        tile.addEventListener('mouseenter', function() {
-          console.log('Mouse entered tile', index);
-          const overlay = this.querySelector('.tile-overlay');
-          if (overlay) {
-            overlay.style.opacity = '0';
-          }
+      // Wait for Alpine.js to finish rendering
+      setTimeout(function () {
+        const tiles = document.querySelectorAll('.image-tile');
+        console.log('Found', tiles.length, 'image tiles');
+
+        tiles.forEach((tile, index) => {
+          console.log('Setting up events for tile', index);
+
+          tile.addEventListener('mouseenter', function () {
+            console.log('Mouse entered tile', index);
+            const overlay = this.querySelector('.tile-overlay');
+            if (overlay) {
+              overlay.style.opacity = '0';
+            }
+          });
+
+          tile.addEventListener('mouseleave', function () {
+            console.log('Mouse left tile', index);
+            const overlay = this.querySelector('.tile-overlay');
+            if (overlay) {
+              overlay.style.opacity = '0.6';
+            }
+          });
         });
-        
-        tile.addEventListener('mouseleave', function() {
-          console.log('Mouse left tile', index);
-          const overlay = this.querySelector('.tile-overlay');
-          if (overlay) {
-            overlay.style.opacity = '0.6';
-          }
-        });
-      });
-    }, 500); // Small delay to ensure Alpine.js has initialized everything
-  });
-</script>
-       {% endblock home %}
+      }, 500); // Small delay to ensure Alpine.js has initialized everything
+    });
+  </script>
+{% endblock home %}
