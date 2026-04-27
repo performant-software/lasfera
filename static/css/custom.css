@@ -132,3 +132,7 @@ note[data-notation] {
 .prose .block-video iframe {
   max-width: 100%;
 }
+
+.prose {
+  max-width: max(65ch, 75%);
+}

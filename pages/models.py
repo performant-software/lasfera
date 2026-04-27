@@ -48,14 +48,37 @@ class SitePage(Page):
     template = "pages/site_page.html"
 
 
+class NavCardBlock(blocks.StructBlock):
+    title = blocks.CharBlock(
+        required=True,
+        help_text="The title text that will appear in the card (e.g. Edition)",
+    )
+    description = blocks.TextBlock(
+        required=True, help_text="The subtitle text that will appear in the card"
+    )
+    image = ImageChooserBlock(required=True)
+    url = blocks.CharBlock(required=True, help_text="The URL for the 'More' link")
+
+    class Meta:
+        icon = "link"
+        label = "Navigation Card"
+
+
 @register_snippet
 class HomeIntroduction(models.Model):
     title = models.CharField(max_length=255)
     body = StreamField(CommonContentBlock(), use_json_field=True, blank=True)
+    navigation_cards = StreamField(
+        [("card", NavCardBlock())],
+        use_json_field=True,
+        blank=True,
+        help_text="The cards with links that appear below the intro text",
+    )
 
     panels = [
         FieldPanel("title"),
         FieldPanel("body"),
+        FieldPanel("navigation_cards"),
     ]
 
     def __str__(self):
@@ -78,6 +101,7 @@ class ManuscriptsIntroduction(models.Model):
 
 class ExternalLinkBlock(blocks.StructBlock):
     """Block for adding external links to the data page"""
+
     title = blocks.CharBlock(required=True, help_text="Text to display for the link")
     url = blocks.URLBlock(required=True, label="URL")
 
@@ -88,6 +112,7 @@ class ExternalLinkBlock(blocks.StructBlock):
 
 class DocumentResourceBlock(blocks.StructBlock):
     """Block for adding document uploads to the data page"""
+
     title = blocks.CharBlock(
         required=False, help_text="Optional: Override the document's original filename"
     )
@@ -100,6 +125,7 @@ class DocumentResourceBlock(blocks.StructBlock):
 
 class DataPage(SitePage):
     """Page type used only for the Data page"""
+
     template = "pages/data_page.html"
 
     additional_resources = StreamField(
