@@ -77,7 +77,7 @@
 
 {% block content %}
   <div class="mx-auto">
-    <section class="w-full p-4 mt-7 mb-10">
+    <section class="w-full p-4 mt-7 mb-10" x-data="{ hideViewer: false }">
       <!-- Title and Hamburger Menu -->
       <div class="sticky top-16 bg-white z-40 flex justify-between items-center mb-5 shadow-md shadow-white py-3">
         <h3 class="text-4xl font-bold" id="top">
@@ -167,6 +167,21 @@
                         <option value="shortened">Show shortened line codes</option>
                         <option value="hidden" selected>Hide line codes</option>
                       </select>
+                    </div>
+
+                    <!-- Image viewer toggle -->
+                    <div class="w-full mt-1">
+                      <label class="flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          id="viewerToggle" 
+                          x-model="hideViewer" 
+                          class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
+                        >
+                        <span class="ml-2 pt-1 block text-[1rem]">
+                          Hide manuscript images
+                        </span>
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -264,7 +279,7 @@
               x-data="tifyViewer"
               data-has-known-folios="{{ has_known_folios|lower }}"
               data-manifest-url="{{ manuscript.iiif_url }}">
-            <div class="sticky pt-8 top-32">
+            <div class="sticky pt-8 top-32" x-show="!hideViewer">
               <div class="bg-white rounded-lg shadow-lg">
                 <div id="tify-container" class="w-full h-[calc(100vh-10rem)]"></div>
               </div>
