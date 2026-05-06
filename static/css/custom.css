@@ -25,6 +25,47 @@ body {
   display: inline;
 }
 
+/* --- Step 4 Addition: Full Width & Image Wrapping --- */
+
+/* 1. Override the 75% width restriction */
+.prose {
+    max-width: none !important;
+    width: 100%;
+}
+
+/* 2. Custom Image Wrapping for StreamField ImageBlocks */
+/* This targets the 'image' blocks specifically */
+.block-image {
+    display: block;
+    clear: both;
+    margin-bottom: 2rem;
+}
+
+.block-image.left {
+    float: left;
+    margin-right: 2rem;
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+.block-image.right {
+    float: right;
+    margin-left: 2rem;
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+/* Responsive adjustment: on medium screens and up, images take up 1/3 width */
+@media (min-width: 768px) {
+    .block-image.left, .block-image.right {
+        width: 33%;
+    }
+}
+
+/* 3. Ensure paragraphs flow correctly around floated images */
+.block-paragraph {
+    display: block;
+}
 note[data-notation] {
   background-color: #e2e2e2;
   cursor: help;
