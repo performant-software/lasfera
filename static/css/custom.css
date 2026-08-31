@@ -27,9 +27,9 @@ body {
 
 /* --- Step 4 Addition: Full Width & Image Wrapping --- */
 
-/* 1. Override the 75% width restriction */
-.prose {
-    max-width: none !important;
+/* 1. Override the 75% width restriction (site pages only, which use <article class="prose">) */
+article.prose {
+    max-width: none;
     width: 100%;
 }
 
