@@ -1,0 +1,12 @@
+{% load wagtailcore_tags %}
+<details class="group border-b border-gray-200 py-4">
+    <summary class="flex cursor-pointer items-center justify-between font-medium list-none">
+        <span class="text-xl font-semibold">{{ value.title }}</span>
+        <span class="transition group-open:rotate-180">
+            <svg fill="none" height="24" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="24"><path d="M19 9l-7 7-7-7"></path></svg>
+        </span>
+    </summary>
+    <div class="mt-4 text-gray-700 leading-relaxed group-open:animate-fadeIn">
+        {{ value.content|richtext }}
+    </div>
+</details>

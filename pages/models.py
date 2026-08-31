@@ -21,13 +21,22 @@ class ImageBlock(blocks.StructBlock):
         icon = "image"
         template = "partials/image_block.html"
 
+class AccordionBlock(blocks.StructBlock):
+    title = blocks.CharBlock(required=True)
+    content = blocks.RichTextBlock(required=True)
 
+    class Meta:
+        template = "blocks/accordion.html"
+        icon = "arrow-down"
+        label = "Accordion"
+        
 class CommonContentBlock(blocks.StreamBlock):
     paragraph = blocks.RichTextBlock(icon="pilcrow")
     heading = blocks.CharBlock(icon="title")
     image = ImageBlock()
     video = EmbedBlock(icon="media", max_width=800, max_height=400)
-
+    quote = blocks.BlockQuoteBlock(icon="openquote") #
+    accordion = AccordionBlock()                   #
 
 class AboutPage(RoutablePageMixin, Page):
     body = StreamField(CommonContentBlock(), use_json_field=True, blank=True)
