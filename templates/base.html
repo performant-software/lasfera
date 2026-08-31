@@ -30,6 +30,54 @@
         <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
         <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
         <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster-src.js"></script>
+        <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+        <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+        <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
+        <script>
+          // Adds a basemap to a Leaflet map using CARTO's Voyager vector style,
+          // forcing every label to Latin/English
+          window.addBasemap = function (map, cartoKey) {
+            if (typeof L.maplibreGL === "function") {
+              var styleUrl =
+                "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+              if (cartoKey) {
+                styleUrl += "?key=" + cartoKey;
+              }
+              var glLayer = L.maplibreGL({
+                style: styleUrl,
+                attribution:
+                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+              }).addTo(map);
+              var glMap = glLayer.getMaplibreMap();
+              glMap.on("style.load", function () {
+                glMap.getStyle().layers.forEach(function (layer) {
+                  if (
+                    layer.type === "symbol" &&
+                    layer.layout &&
+                    layer.layout["text-field"]
+                  ) {
+                    glMap.setLayoutProperty(layer.id, "text-field", [
+                      "coalesce",
+                      ["get", "name:latin"],
+                      ["get", "name:en"],
+                      ["get", "name"],
+                    ]);
+                  }
+                });
+              });
+              return glLayer;
+            }
+            // If MapLibre GL is unavailable, fallback to keyless OpenStreetMap raster tiles
+            return L.tileLayer(
+              "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+              {
+                attribution:
+                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19,
+              }
+            ).addTo(map);
+          };
+        </script>
         <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
         <script src="https://unpkg.com/htmx.org@1.8.6" integrity="sha384-Bj8qm/6B+71E6FQSySofJOUjA/gq330vEqjFx9LakWybUySyI1IQHwPtbTU7bNwx" crossorigin="anonymous"></script>
         {% tailwind_css %}

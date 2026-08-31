@@ -38,6 +38,9 @@ CSRF_TRUSTED_ORIGINS = env.list(
 X_FRAME_OPTIONS = "SAMEORIGIN"
 SILENCED_SYSTEM_CHECKS = ["security.W019"]
 
+# CARTO API key for the gazetteer basemaps (client-exposed)
+CARTO_API_KEY = env("CARTO_API_KEY", default="")
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -117,6 +120,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.request",
+                "config.context_processors.carto",
             ],
         },
     },
