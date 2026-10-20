@@ -15,8 +15,6 @@ from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 from prose.fields import RichTextField
 
-from manuscript.utils import get_canvas_id_for_folio
-
 logger = logging.getLogger(__name__)
 
 
@@ -649,6 +647,33 @@ class Folio(models.Model):
         help_text="Toponyms associated with the folio.",
         verbose_name="Associated toponyms",
     )
+    canvas_id = models.CharField(
+        blank=True,
+        null=True,
+        max_length=1024,
+        verbose_name="IIIF canvas ID",
+        help_text="The ID of the canvas in the manuscript's IIIF manifest that shows this folio. This is what links the text to the image viewer.",
+    )
+    canvas_index = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="IIIF canvas position",
+        help_text="The position of the canvas in the IIIF manifest (starting at 0), recorded when the canvas was linked.",
+    )
+    canvas_label = models.CharField(
+        blank=True,
+        null=True,
+        max_length=255,
+        verbose_name="IIIF canvas label",
+        help_text="The canvas label in the IIIF manifest, recorded when the canvas was linked. For reference only; it may differ from the folio number.",
+    )
+    image_id = models.CharField(
+        blank=True,
+        null=True,
+        max_length=1024,
+        verbose_name="IIIF image ID",
+        help_text="The ID of the image on the linked canvas, recorded when the canvas was linked. Used to re-link the folio if the manifest changes.",
+    )
 
     def __str__(self) -> str:
         if self.folio_number is not None:
@@ -657,17 +682,18 @@ class Folio(models.Model):
 
     def get_canvas_id(self):
         """Get the IIIF canvas ID for this folio"""
-        if not self.folio_number:
-            return None
-
-        return get_canvas_id_for_folio(self.folio_number)
-
-    # def get_stanzas(self) -> List[Stanza]:
-    #     """Get all stanzas that appear on this folio in order."""
-    #     return get_stanzas_in_folio(self)
+        return self.canvas_id or None
 
     class Meta:
         ordering = ["folio_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["manuscript", "canvas_id"],
+                condition=Q(canvas_id__isnull=False),
+                name="unique_folio_canvas_per_manuscript",
+                violation_error_message="Another folio in this manuscript is already linked to this IIIF canvas.",
+            )
+        ]
 
 
 class SingleManuscript(models.Model):

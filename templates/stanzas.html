@@ -210,7 +210,7 @@
                 <!-- Stanza pairs -->
                 {% for stanza_pair in stanza_pairs %}
                   {% if stanza_pair.new_folio and stanza_pair.current_folio %}
-                    <div class="col-span-2 relative flex items-center my-6 folio-divider" data-folio-number="{{ stanza_pair.current_folio.folio_number }}">
+                    <div class="col-span-2 relative flex items-center my-6 folio-divider" data-folio-number="{{ stanza_pair.current_folio.folio_number }}" data-canvas-id="{{ stanza_pair.current_folio.canvas_id|default_if_none:'' }}">
                       <div class="font-medium text-gray-500 pr-4">
                         Folio {{ stanza_pair.current_folio.folio_number }}
                       </div>

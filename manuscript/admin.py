@@ -59,10 +59,28 @@ class StanzaInline(admin.StackedInline):
     )
 
 
+class FolioAdminForm(forms.ModelForm):
+    class Meta:
+        model = Folio
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if "canvas_id" in self.changed_data:
+            # the recorded canvas details describe the previously linked
+            # canvas, so drop them when the canvas ID is changed by hand
+            self.instance.canvas_index = None
+            self.instance.canvas_label = None
+            self.instance.image_id = None
+        return cleaned_data
+
+
 class FolioInline(admin.StackedInline):
     model = Folio
+    form = FolioAdminForm
     classes = ("collapse",)
     extra = 1
+    readonly_fields = ("canvas_index", "canvas_label", "image_id")
 
 
 class DetailInline(admin.StackedInline):
@@ -283,20 +301,41 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
 @admin.register(Folio)
 class FolioAdmin(ImportExportModelAdmin):
     resource_class = FolioResource
+    form = FolioAdminForm
 
-    list_display = ["manuscript", "folio_number", "line_range_display", "stanza_count"]
-    list_filter = ["manuscript"]
+    list_display = [
+        "manuscript",
+        "folio_number",
+        "canvas_label",
+        "line_range_display",
+        "stanza_count",
+    ]
+    list_filter = ["manuscript", ("canvas_id", admin.EmptyFieldListFilter)]
     search_fields = [
         "folio_number",
         "manuscript__siglum",
         "line_code_range_start",
         "line_code_range_end",
+        "canvas_label",
     ]
 
-    readonly_fields = ["stanza_list", "line_range_display", "stanza_count"]
+    readonly_fields = [
+        "stanza_list",
+        "line_range_display",
+        "stanza_count",
+        "canvas_index",
+        "canvas_label",
+        "image_id",
+    ]
 
     fieldsets = (
         ("Folio Information", {"fields": ("manuscript", "folio_number")}),
+        (
+            "IIIF Canvas",
+            {
+                "fields": ("canvas_id", "canvas_label", "canvas_index", "image_id"),
+            },
+        ),
         (
             "Line Range",
             {
