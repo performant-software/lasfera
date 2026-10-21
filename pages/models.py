@@ -16,6 +16,20 @@ class ImageBlock(blocks.StructBlock):
     caption = blocks.CharBlock(
         required=False, help_text="Optional caption for the image"
     )
+    alt_text = blocks.CharBlock(
+        required=False,
+        help_text="Describe the image for screen readers. Defaults to the image title.",
+    )
+    alignment = blocks.ChoiceBlock(
+        choices=[
+            ("center", "Centered (default size)"),
+            ("full", "Full width"),
+            ("left", "Float left (text wraps)"),
+            ("right", "Float right (text wraps)"),
+        ],
+        default="center",
+        required=False,
+    )
 
     class Meta:
         icon = "image"
