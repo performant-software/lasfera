@@ -9,13 +9,16 @@
 {% elif value.alignment == "center" %}
   {% image value.image max-650x650 as img %}
   <figure class="my-6 mx-auto w-full md:w-2/3 clear-both">
-{% else %}
+{% elif value.alignment == "full" %}
   {% image value.image max-1000x1000 as img %}
   <figure class="my-6 w-full clear-both">
+{% else %}
+  {% image value.image max-650x650 as img %}
+  <figure class="my-6">
 {% endif %}
     <img src="{{ img.url }}"
          alt="{% if value.alt_text %}{{ value.alt_text }}{% else %}{{ img.alt }}{% endif %}"
-         class="w-full h-auto mx-auto rounded-lg shadow-md border border-gray-300">
+         class="w-auto h-auto mx-auto rounded-lg shadow-md border border-gray-300 max-w-full">
     {% if value.caption %}
       <figcaption class="mt-3 text-center text-sm italic text-gray-500">{{ value.caption }}</figcaption>
     {% endif %}
