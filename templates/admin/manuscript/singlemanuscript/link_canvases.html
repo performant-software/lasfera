@@ -1,0 +1,152 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .canvas-help { max-width: 60em; margin-bottom: 1em; }
+    .canvas-toolbar { display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin: 1em 0; }
+    .canvas-toolbar label { font-weight: normal; }
+    .canvas-notice { margin: 0.5em 0; }
+    .canvas-status-error { color: var(--error-fg, #ba2121); }
+    #canvas-table { width: 100%; }
+    #canvas-table td { vertical-align: middle; }
+    #canvas-table .canvas-position { width: 3em; text-align: right; }
+    #canvas-table .canvas-thumb { width: 110px; }
+    .canvas-thumb-frame { position: relative; display: flex; align-items: center; justify-content: center; width: 100px; height: 100px; cursor: zoom-in; }
+    .canvas-thumb-frame img { max-width: 100px; max-height: 100px; display: block; }
+    .canvas-thumb-frame.is-broken { cursor: default; color: var(--body-quiet-color, #666); font-size: 0.75rem; }
+    .is-loading img { opacity: 0; }
+    .is-loading::after {
+      content: ""; position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; margin: -12px 0 0 -12px;
+      border: 2px solid var(--hairline-color, #ddd); border-top-color: var(--link-fg, #447e9b);
+      border-radius: 50%; animation: canvas-spin 0.8s linear infinite;
+    }
+    @keyframes canvas-spin { to { transform: rotate(360deg); } }
+    #canvas-viewer { padding: 0; border: none; border-radius: 4px; max-width: 92vw; max-height: 92vh; background: var(--body-bg, #fff); color: var(--body-fg, #333); }
+    #canvas-viewer::backdrop { background: rgba(0, 0, 0, 0.6); }
+    #canvas-viewer header { display: flex; justify-content: space-between; align-items: center; gap: 1em; padding: 8px 12px; border-bottom: 1px solid var(--hairline-color, #ddd); }
+    #canvas-viewer .canvas-viewer-image { position: relative; display: flex; align-items: center; justify-content: center; min-width: 300px; min-height: 300px; padding: 8px; }
+    #canvas-viewer .canvas-viewer-image img { display: block; max-width: calc(92vw - 16px); max-height: calc(92vh - 100px); }
+    #canvas-viewer footer { padding: 6px 12px 10px; font-size: 0.8125rem; }
+    #canvas-table .canvas-folio input { width: 9em; }
+    #canvas-table .canvas-suggestion { margin-left: 0.5em; font-size: 0.8125rem; padding: 2px 6px; cursor: pointer; }
+    #canvas-table tr.is-changed td { background: var(--selected-row, #ffc); }
+    #canvas-table tr.has-problem td { background: var(--message-error-bg, #ffefef); }
+    #canvas-table .canvas-note { display: block; }
+    #canvas-table .canvas-note.is-problem { color: var(--error-fg, #ba2121); font-weight: bold; }
+    #canvas-table .canvas-note.is-info { color: var(--body-quiet-color, #666); }
+    #canvas-table .canvas-note.is-warning { color: #9a6700; }
+  </style>
+{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url 'admin:manuscript_singlemanuscript_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; <a href="{{ change_url }}">{{ manuscript }}</a>
+    &rsaquo; Link IIIF canvases
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    <div class="canvas-help">
+      <p>
+        This page allows you to connect pages from a IIIF manifest to folios in the manuscript, such
+        that the IIIF manifest will automatically change pages as users read the manuscript.
+      </p>
+      <p>
+        How it works:
+        <ul>
+          <li>Each row is one image (canvas) from this manuscript's <a href="{{ manuscript.iiif_url }}" target="_blank" rel="noopener">IIIF manifest</a>.</li>
+          <li>Look at the image, work out which folio of the manuscript it shows, and enter that folio's
+number (for example 12r) to link the image to the text.</li>
+          <li>You can click each image to see it larger.</li>
+          <li>For a quick start, use <strong>Fill in folio numbers from manifest labels</strong>: it copies an
+          image's manifest label into its empty folio number box when the label appears only once in the
+          manifest and matches a Folio record that isn't linked yet. Check the results before saving.</li>
+          <li>Clear a folio number to unlink it.</li>
+          <li>Use the <strong>Show</strong> menu to narrow the list, for example to images not linked yet, your
+          unsaved changes, or rows with problems that need fixing before you can save.</li>
+          <li>Use the Save button at the bottom of the page to save your changes when finished.</li>
+          <li>A Folio record also needs a line range before the text can turn to its image. Add it on the
+          Folio record's own page after saving.</li>
+        </ul>
+        Note that the IIIF institution's own label for each image is shown under "Manifest label" for reference only; it may be wrong or repeated.
+      </p>
+      <p>
+        Note also that this page only handles which Folio record is linked to which image. Folio records are never
+        renamed or deleted here, so their toponyms stay attached; to correct a folio number itself,
+        edit the Folio record.
+        {% if can_create %}Entering a folio number that has no Folio record yet will create a new one on save.{% endif %}
+      </p>
+    </div>
+
+    <p id="canvas-status">Loading the IIIF manifest…</p>
+    <div id="canvas-notices"></div>
+
+    <form id="canvas-form" method="post" hidden>
+      {% csrf_token %}
+      <input type="hidden" name="rows" id="canvas-rows">
+
+      <div class="canvas-toolbar">
+        <label>
+          Show
+          <select id="canvas-filter">
+            <option value="all">all images</option>
+            <option value="linked">linked images</option>
+            <option value="unlinked">images not linked</option>
+            <option value="changed">unsaved changes</option>
+            <option value="problem">problems</option>
+          </select>
+        </label>
+        <button type="button" class="button" id="canvas-fill"
+                title="For each image without a folio number, use its manifest label as the folio number if the label isn't repeated in the manifest and matches exactly one Folio record that isn't linked to an image yet. Nothing is saved until you click Save.">
+          Fill in folio numbers from manifest labels
+        </button>
+        <span id="canvas-summary"></span>
+      </div>
+
+      <div class="module">
+        <table id="canvas-table">
+          <thead>
+            <tr>
+              <th scope="col" class="canvas-position">#</th>
+              <th scope="col">Image</th>
+              <th scope="col">Manifest label</th>
+              <th scope="col">Folio number</th>
+              <th scope="col">Notes</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <datalist id="canvas-folio-numbers">
+        {% for folio in folios %}{% if folio.number %}<option value="{{ folio.number }}">{% endif %}{% endfor %}
+      </datalist>
+
+      <div class="submit-row">
+        <input type="submit" value="Save" class="default" id="canvas-save">
+        <a href="{{ change_url }}" class="closelink">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <dialog id="canvas-viewer" aria-labelledby="canvas-viewer-title">
+    <header>
+      <strong id="canvas-viewer-title"></strong>
+      <button type="button" class="button" id="canvas-viewer-close">Close</button>
+    </header>
+    <div class="canvas-viewer-image"><img alt=""></div>
+    <footer><a id="canvas-viewer-full" target="_blank" rel="noopener">Open full size in a new tab</a></footer>
+  </dialog>
+
+  {{ folios|json_script:"canvas-folios" }}
+  {{ submitted|json_script:"canvas-submitted" }}
+  {{ manuscript.iiif_url|json_script:"canvas-manifest-url" }}
+  {{ can_create|json_script:"canvas-can-create" }}
+  <script src="{% static 'js/canvas_linking.js' %}"></script>
+{% endblock %}

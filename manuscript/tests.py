@@ -1,14 +1,21 @@
+import json
 from io import StringIO
 from unittest import mock
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import IntegrityError
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 
+from manuscript.canvas_linking import clean_canvas_rows, link_canvases
 from manuscript.models import Folio, SingleManuscript
 from manuscript.utils import get_canvases, normalize_folio_label
 
 MANIFEST_URL = "https://example.org/iiif/ms/manifest.json"
+User = get_user_model()
 
 
 def v2_canvas(number, label):
@@ -225,3 +232,186 @@ class LinkFolioCanvasesTest(TestCase):
         Folio.objects.create(manuscript=self.manuscript, canvas_id=canvas_id)
         with self.assertRaises(IntegrityError):
             Folio.objects.create(manuscript=self.manuscript, canvas_id=canvas_id)
+
+
+def canvas_row(number, folio="", label=None):
+    return {
+        "id": f"https://example.org/iiif/ms/canvas/p{number:04d}",
+        "index": number - 1,
+        "label": label if label is not None else f"label {number}",
+        "image_id": f"https://example.org/image/{number}",
+        "folio": folio,
+    }
+
+
+class LinkCanvasesTest(TestCase):
+    def setUp(self):
+        self.manuscript = SingleManuscript.objects.create(
+            item_id=1, siglum="Test1", iiif_url=MANIFEST_URL
+        )
+
+    def add_folio(self, number, canvas=None):
+        folio = Folio.objects.create(manuscript=self.manuscript, folio_number=number)
+        if canvas:
+            folio.canvas_id = canvas_row(canvas)["id"]
+            folio.canvas_index = canvas - 1
+            folio.save()
+        return folio
+
+    def link(self, rows, **kwargs):
+        counts, created = link_canvases(
+            self.manuscript, clean_canvas_rows(rows), **kwargs
+        )
+        self.created = created
+        return counts
+
+    def test_links_existing_and_creates_new_folios(self):
+        folio_1r = self.add_folio("1r")
+        counts = self.link([canvas_row(1, "f. 1r"), canvas_row(2, "1v"), canvas_row(3)])
+
+        self.assertEqual(counts, {"linked": 2, "created": 1})
+        self.assertEqual([folio.folio_number for folio in self.created], ["1v"])
+        folio_1r.refresh_from_db()
+        self.assertEqual(folio_1r.folio_number, "1r")
+        self.assertEqual(folio_1r.canvas_id, canvas_row(1)["id"])
+        self.assertEqual(folio_1r.canvas_label, "label 1")
+        self.assertEqual(folio_1r.image_id, "https://example.org/image/1")
+        folio_1v = Folio.objects.get(manuscript=self.manuscript, folio_number="1v")
+        self.assertEqual(folio_1v.canvas_index, 1)
+
+    def test_clearing_unlinks_but_keeps_folio(self):
+        folio = self.add_folio("1r", canvas=1)
+        counts = self.link([canvas_row(1, ""), canvas_row(2)])
+
+        self.assertEqual(counts, {"unlinked": 1})
+        folio.refresh_from_db()
+        self.assertEqual(folio.folio_number, "1r")
+        self.assertIsNone(folio.canvas_id)
+        self.assertIsNone(folio.canvas_index)
+
+    def test_swapping_canvases(self):
+        folio_1r = self.add_folio("1r", canvas=1)
+        folio_1v = self.add_folio("1v", canvas=2)
+        counts = self.link([canvas_row(1, "1v"), canvas_row(2, "1r")])
+
+        self.assertEqual(counts, {"linked": 2})
+        folio_1r.refresh_from_db()
+        folio_1v.refresh_from_db()
+        self.assertEqual(folio_1r.canvas_index, 1)
+        self.assertEqual(folio_1v.canvas_index, 0)
+
+    def test_replacing_a_linked_folio_unlinks_it(self):
+        old = self.add_folio("1 : 1r", canvas=1)
+        new = self.add_folio("1r")
+        counts = self.link([canvas_row(1, "1r")])
+
+        self.assertEqual(counts, {"linked": 1, "unlinked": 1})
+        old.refresh_from_db()
+        new.refresh_from_db()
+        self.assertIsNone(old.canvas_id)
+        self.assertEqual(new.canvas_index, 0)
+
+    def test_no_changes(self):
+        self.add_folio("1r", canvas=1)
+        Folio.objects.filter(folio_number="1r").update(
+            canvas_label="label 1", image_id="https://example.org/image/1"
+        )
+        self.assertEqual(self.link([canvas_row(1, "1r"), canvas_row(2)]), {})
+
+    def test_leaves_links_to_canvases_not_submitted(self):
+        folio = self.add_folio("9r", canvas=9)
+        self.link([canvas_row(1, "1r")])
+
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_id, canvas_row(9)["id"])
+
+    def test_same_folio_on_two_canvases_is_rejected(self):
+        folio = self.add_folio("1r", canvas=1)
+        with self.assertRaisesMessage(ValidationError, "more than one image (1, 2)"):
+            self.link(
+                [canvas_row(1, "1r"), canvas_row(2, "f. 1r"), canvas_row(3, "2r")]
+            )
+
+        # nothing was saved
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_index, 0)
+        self.assertFalse(Folio.objects.filter(folio_number="2r").exists())
+
+    def test_ambiguous_folio_number_is_rejected(self):
+        self.add_folio("197r")
+        self.add_folio("197r.")
+        with self.assertRaisesMessage(ValidationError, "matches several folio records"):
+            self.link([canvas_row(1, "197r")])
+
+    def test_creating_needs_permission(self):
+        with self.assertRaisesMessage(
+            ValidationError, "permission to add folio records"
+        ):
+            self.link([canvas_row(1, "1r")], can_create=False)
+
+    def test_bad_rows_are_rejected(self):
+        for rows in [None, [{"index": 0}], [canvas_row(1), canvas_row(1)]]:
+            with self.assertRaises(ValidationError):
+                clean_canvas_rows(rows)
+
+
+class LinkCanvasesViewTest(TestCase):
+    def setUp(self):
+        self.manuscript = SingleManuscript.objects.create(
+            item_id=1, siglum="Test1", iiif_url=MANIFEST_URL
+        )
+        self.url = reverse(
+            "admin:manuscript_singlemanuscript_canvases", args=[self.manuscript.pk]
+        )
+        self.user = User.objects.create_superuser("admin", "admin@example.org", "pw")
+        self.client.force_login(self.user)
+
+    def test_page_lists_folios(self):
+        Folio.objects.create(manuscript=self.manuscript, folio_number="1r")
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="canvas-folios"')
+        self.assertContains(response, '"number": "1r"')
+
+    def test_change_form_links_to_page(self):
+        response = self.client.get(
+            reverse(
+                "admin:manuscript_singlemanuscript_change", args=[self.manuscript.pk]
+            )
+        )
+        self.assertContains(response, self.url)
+
+    def test_saving(self):
+        rows = json.dumps([canvas_row(1, "1r"), canvas_row(2)])
+        response = self.client.post(self.url, {"rows": rows})
+
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        folio = Folio.objects.get(manuscript=self.manuscript, folio_number="1r")
+        self.assertEqual(folio.canvas_index, 0)
+
+    def test_saving_lists_new_folios_needing_line_ranges(self):
+        rows = json.dumps([canvas_row(1, "1r"), canvas_row(2)])
+        response = self.client.post(self.url, {"rows": rows}, follow=True)
+
+        folio = Folio.objects.get(manuscript=self.manuscript, folio_number="1r")
+        folio_url = reverse("admin:manuscript_folio_change", args=[folio.pk])
+        self.assertContains(response, "Add a line range to the new folio records")
+        self.assertContains(response, f'<a href="{folio_url}">1r</a>', html=True)
+
+    def test_errors_keep_entries(self):
+        rows = json.dumps([canvas_row(1, "1r"), canvas_row(2, "1r")])
+        response = self.client.post(self.url, {"rows": rows})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "more than one image")
+        self.assertEqual(response.context["submitted"][canvas_row(2)["id"]], "1r")
+        self.assertFalse(Folio.objects.exists())
+
+    def test_needs_folio_permission(self):
+        staff = User.objects.create_user("staff", password="pw", is_staff=True)
+        staff.user_permissions.add(
+            Permission.objects.get(codename="change_singlemanuscript")
+        )
+        self.client.force_login(staff)
+        self.assertEqual(self.client.get(self.url).status_code, 403)

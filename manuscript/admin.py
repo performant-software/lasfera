@@ -1,12 +1,19 @@
+import json
+
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.admin.utils import unquote
 from django.contrib.contenttypes.admin import GenericTabularInline
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count
-from django.urls import reverse
-from django.utils.html import format_html
+from django.shortcuts import redirect
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
+from django.utils.html import format_html, format_html_join
 from import_export.admin import ImportExportModelAdmin
 
 from common.admin import StripDivMixin
+from manuscript.canvas_linking import clean_canvas_rows, link_canvases
 from manuscript.models import (
     AuthorityFile,
     Codex,
@@ -286,9 +293,120 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
         "library",
     ]
 
+    change_form_template = "admin/manuscript/singlemanuscript/change_form.html"
+
     @admin.display(boolean=True, description="IIIF Available")
     def has_iiif_url(self, obj):
         return bool(obj.iiif_url)
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/canvases/",
+                self.admin_site.admin_view(self.link_canvases_view),
+                name="manuscript_singlemanuscript_canvases",
+            ),
+            *super().get_urls(),
+        ]
+
+    def link_canvases_view(self, request, object_id):
+        """Page for linking the manuscript's folios to its IIIF canvases by hand"""
+        manuscript = self.get_object(request, unquote(object_id))
+        if manuscript is None:
+            return self._get_obj_does_not_exist_redirect(request, self.opts, object_id)
+        if not request.user.has_perm("manuscript.change_folio"):
+            raise PermissionDenied
+
+        change_url = reverse(
+            "admin:manuscript_singlemanuscript_change", args=[manuscript.pk]
+        )
+        if not manuscript.iiif_url:
+            messages.warning(request, "This manuscript has no IIIF manifest URL.")
+            return redirect(change_url)
+
+        can_create = request.user.has_perm("manuscript.add_folio")
+        submitted = None
+        if request.method == "POST":
+            try:
+                raw_rows = json.loads(request.POST.get("rows", ""))
+            except ValueError:
+                raw_rows = None
+            try:
+                rows = clean_canvas_rows(raw_rows)
+                counts, created = link_canvases(manuscript, rows, can_create=can_create)
+            except ValidationError as e:
+                for message in e.messages:
+                    messages.error(request, message)
+                # keep what was entered so it can be corrected
+                if isinstance(raw_rows, list):
+                    submitted = {
+                        str(row.get("id")): str(row.get("folio") or "")
+                        for row in raw_rows
+                        if isinstance(row, dict)
+                    }
+            else:
+                if counts:
+                    messages.success(
+                        request,
+                        f"Saved: linked {counts['linked']}, unlinked "
+                        f"{counts['unlinked']}, and created {counts['created']} "
+                        f"new folio record{'' if counts['created'] == 1 else 's'}.",
+                    )
+                    if created:
+                        messages.warning(
+                            request,
+                            format_html(
+                                "Add a line range to the new folio records so "
+                                "the text can turn to them: {}",
+                                format_html_join(
+                                    ", ",
+                                    '<a href="{}">{}</a>',
+                                    (
+                                        (
+                                            reverse(
+                                                "admin:manuscript_folio_change",
+                                                args=[folio.pk],
+                                            ),
+                                            folio.folio_number,
+                                        )
+                                        for folio in created
+                                    ),
+                                ),
+                            ),
+                        )
+                else:
+                    messages.info(request, "No changes to save.")
+                return redirect(request.path)
+
+        folios = manuscript.folio_set.annotate(
+            toponym_count=Count("locationalias", distinct=True)
+        )
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.opts,
+            "title": f"Link IIIF canvases: {manuscript}",
+            "manuscript": manuscript,
+            "change_url": change_url,
+            "can_create": can_create,
+            "folios": [
+                {
+                    "id": folio.pk,
+                    "number": folio.folio_number or "",
+                    "canvas_id": folio.canvas_id,
+                    "line_start": folio.line_code_range_start,
+                    "line_end": folio.line_code_range_end,
+                    "toponyms": folio.toponym_count,
+                    "admin_url": reverse(
+                        "admin:manuscript_folio_change", args=[folio.pk]
+                    ),
+                }
+                for folio in folios
+            ],
+            "submitted": submitted,
+        }
+        return TemplateResponse(
+            request, "admin/manuscript/singlemanuscript/link_canvases.html", context
+        )
 
     class Media:
         js = ("js/text_annotations.js",)
