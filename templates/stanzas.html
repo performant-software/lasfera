@@ -221,6 +221,15 @@
                     <!-- Original stanza -->
                     <div class="w-full">
                       {% for stanza in stanza_pair.original %}
+                        {% if stanza.folio_break %}
+                          <!-- Folio changes mid-stanza -->
+                          <div class="relative flex items-center my-1 text-sm folio-divider folio-divider-inline" data-folio-number="{{ stanza.folio_break.folio_number }}" data-canvas-id="{{ stanza.folio_break.canvas_id|default_if_none:'' }}">
+                            <div class="text-gray-500 pr-2">
+                              Folio {{ stanza.folio_break.folio_number }}
+                            </div>
+                            <div class="flex-grow border-t border-dashed border-gray-300"></div>
+                          </div>
+                        {% endif %}
                         <div class="relative">
                           <div class="flex gap-2 items-start">
                             <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-36" 
@@ -245,6 +254,15 @@
                     <!-- Translated stanza -->
                     <div class="w-full">
                       {% for stanza in stanza_pair.translated %}
+                        {% if stanza.folio_break %}
+                          <!-- Matches the mid-stanza folio marker in the original column -->
+                          <div class="relative flex items-center my-1 text-sm" aria-hidden="true">
+                            <div class="text-gray-500 pr-2">
+                              Folio {{ stanza.folio_break.folio_number }}
+                            </div>
+                            <div class="flex-grow border-t border-dashed border-gray-300"></div>
+                          </div>
+                        {% endif %}
                         <div class="relative">
                           <div class="flex gap-2 items-start">
                             <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-36" href="#{{stanza.stanza_line_code_starts}}"

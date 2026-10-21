@@ -121,8 +121,13 @@ def manuscript_stanzas(request, siglum):
     line_code_to_folio = {}
 
     if folios.exists():
-        # Try to build a map of line codes to folios
-        for folio in folios:
+        # Try to build a map of line codes to folios. Apply ranges in reading
+        # order so where one folio's range ends on the line the next starts
+        # on, that line goes to the later folio.
+        for folio in sorted(
+            folios,
+            key=lambda f: line_code_to_numeric(f.line_code_range_start) or 0,
+        ):
             if folio.line_code_range_start and folio.line_code_range_end:
                 try:
                     start_code = line_code_to_numeric(folio.line_code_range_start)
@@ -185,29 +190,44 @@ def manuscript_stanzas(request, siglum):
                 "translated": translated_stanza_group,
             }
 
-            # If we have a folio mapping, try to add folio information
+            # If we have a folio mapping, mark where the folio changes. A
+            # change at the stanza's first verse line is shown between stanzas;
+            # a change further in is marked on the line where the folio starts.
             if has_folio_mapping and original_stanzas:
-                first_stanza = original_stanzas[0]
-                if first_stanza["stanza_line_code_starts"]:
-                    try:
-                        stanza_code = line_code_to_numeric(
-                            first_stanza["stanza_line_code_starts"]
+                at_stanza_start = True
+                keep_stanza_divider = False
+                for line in original_stanzas:
+                    line_code = line["stanza_line_code_starts"]
+                    numeric_code = line_code_to_numeric(line_code)
+                    matching_folio = line_code_to_folio.get(numeric_code)
+                    if matching_folio is not None and matching_folio != current_folio:
+                        current_folio = matching_folio
+                        if at_stanza_start and not keep_stanza_divider:
+                            stanza_group["new_folio"] = True
+                            stanza_group["current_folio"] = current_folio
+                            # Only a folio whose range begins at the stanza
+                            # number keeps the divider if another folio starts
+                            # at the first verse line
+                            keep_stanza_divider = numeric_code == line_code_to_numeric(
+                                current_folio.line_code_range_start
+                            )
+                        else:
+                            line["folio_break"] = current_folio
+                            # Mark the same line in the translation so the
+                            # columns stay level
+                            for translated_line in translated_stanza_group:
+                                if (
+                                    translated_line["stanza_line_code_starts"]
+                                    == line_code
+                                ):
+                                    translated_line["folio_break"] = current_folio
+                        logger.info(
+                            f"New folio at line {line_code}: {current_folio.folio_number}"
                         )
-                        if stanza_code in line_code_to_folio:
-                            matching_folio = line_code_to_folio[stanza_code]
-
-                            # If this is a new folio, mark it in the stanza group
-                            if current_folio is None or matching_folio != current_folio:
-                                current_folio = matching_folio
-                                stanza_group["new_folio"] = True
-                                stanza_group["current_folio"] = current_folio
-                                logger.info(
-                                    f"New folio for stanza {stanza_number}: {current_folio.folio_number}"
-                                )
-                    except Exception as e:
-                        logger.warning(
-                            f"Error determining folio for stanza {first_stanza.id}: {e}"
-                        )
+                    # .00 lines are stanza numbers, not manuscript text, so the
+                    # stanza starts at its first verse line
+                    if not line_code.endswith(".00"):
+                        at_stanza_start = False
 
             # Add the stanza group to the book
             paired_books[book_number].append(stanza_group)

@@ -11,7 +11,14 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from manuscript.canvas_linking import clean_canvas_rows, link_canvases
-from manuscript.models import Folio, Location, LocationAlias, SingleManuscript
+from manuscript.models import (
+    Folio,
+    Location,
+    LocationAlias,
+    SingleManuscript,
+    Stanza,
+    StanzaTranslated,
+)
 from manuscript.utils import get_canvases, normalize_folio_label
 
 MANIFEST_URL = "https://example.org/iiif/ms/manifest.json"
@@ -597,3 +604,131 @@ class VerifyCanvasLinksTest(TestCase):
             call_command("verify_canvas_links", stdout=out)
         self.assertIn("Test1: could not load manifest (403 Forbidden)", out.getvalue())
         self.assertIn("1 manifests could not be loaded", out.getvalue())
+
+
+class StanzaFolioDividerTest(TestCase):
+    """Folio dividers on the text page, between stanzas and mid-stanza."""
+
+    def setUp(self):
+        self.manuscript = SingleManuscript.objects.create(item_id=1, siglum="Test1")
+        # Book 1, stanzas 1-4, each with a stanza number (.00) and 8 lines,
+        # translated line by line
+        for stanza in range(1, 5):
+            for line in range(9):
+                code = f"01.{stanza:02d}.{line:02d}"
+                original = Stanza.objects.create(
+                    stanza_line_code_starts=code,
+                    stanza_text=f"Original {code}",
+                    is_rubric=line == 0,
+                )
+                StanzaTranslated.objects.create(
+                    stanza=original,
+                    stanza_line_code_starts=code,
+                    stanza_text=f"Translated {code}",
+                )
+
+    def add_folios(self, *ranges):
+        for number, start, end in ranges:
+            Folio.objects.create(
+                manuscript=self.manuscript,
+                folio_number=number,
+                line_code_range_start=start,
+                line_code_range_end=end,
+                canvas_id=f"https://example.org/iiif/ms/canvas/{number}",
+            )
+
+    def get_page(self):
+        response = self.client.get(
+            reverse("manuscript_stanzas", args=[self.manuscript.siglum])
+        )
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def stanza_dividers(self, response):
+        return [
+            (
+                group["original"][0]["stanza_line_code_starts"],
+                group["current_folio"].folio_number,
+            )
+            for group in response.context["paired_books"][1]
+            if group.get("new_folio")
+        ]
+
+    def line_breaks(self, response, column="original"):
+        return [
+            (line["stanza_line_code_starts"], line["folio_break"].folio_number)
+            for group in response.context["paired_books"][1]
+            for line in group[column]
+            if line.get("folio_break")
+        ]
+
+    def test_breaks_between_stanzas(self):
+        self.add_folios(("1r", "01.01.00", "01.02.08"), ("1v", "01.03.00", "01.04.08"))
+
+        response = self.get_page()
+
+        self.assertEqual(
+            self.stanza_dividers(response), [("01.01.00", "1r"), ("01.03.00", "1v")]
+        )
+        self.assertEqual(self.line_breaks(response), [])
+        self.assertNotContains(response, "folio-divider-inline")
+
+    def test_break_mid_stanza(self):
+        # Like Vat1, where 240r starts at line 6 of stanza 6
+        self.add_folios(("1r", "01.01.00", "01.02.05"), ("1v", "01.02.06", "01.04.08"))
+
+        response = self.get_page()
+
+        self.assertEqual(self.stanza_dividers(response), [("01.01.00", "1r")])
+        self.assertEqual(self.line_breaks(response), [("01.02.06", "1v")])
+        self.assertEqual(self.line_breaks(response, "translated"), [("01.02.06", "1v")])
+
+        # The marker comes between lines 5 and 6, carrying what tify-sync.js
+        # needs to turn the viewer, in the original column only
+        html = response.content.decode()
+        marker = html.index('data-folio-number="1v"')
+        self.assertLess(html.index("Original 01.02.05"), marker)
+        self.assertLess(marker, html.index("Original 01.02.06"))
+        self.assertContains(
+            response,
+            'class="relative flex items-center my-1 text-sm folio-divider '
+            'folio-divider-inline" data-folio-number="1v" '
+            'data-canvas-id="https://example.org/iiif/ms/canvas/1v"',
+        )
+        self.assertContains(response, 'data-folio-number="1v"', count=1)
+        translated_marker = html.index("Folio 1v", html.index("Translated 01.02.05"))
+        self.assertLess(translated_marker, html.index("Translated 01.02.06"))
+
+    def test_break_at_first_verse_line_is_between_stanzas(self):
+        # The stanza number (.00) falls in the gap before the folio's range
+        self.add_folios(("1r", "01.01.00", "01.02.08"), ("1v", "01.03.01", "01.04.08"))
+
+        response = self.get_page()
+
+        self.assertEqual(
+            self.stanza_dividers(response), [("01.01.00", "1r"), ("01.03.00", "1v")]
+        )
+        self.assertEqual(self.line_breaks(response), [])
+
+    def test_ranges_sharing_a_line(self):
+        # Like Urb1, where each range ends on the line the next one starts on
+        self.add_folios(
+            ("9v", "01.01.01", "01.03.01"),
+            ("10r", "01.03.01", "01.04.08"),
+        )
+
+        response = self.get_page()
+
+        self.assertEqual(
+            self.stanza_dividers(response), [("01.01.00", "9v"), ("01.03.00", "10r")]
+        )
+        self.assertEqual(self.line_breaks(response), [])
+
+    def test_folio_holding_only_the_stanza_number(self):
+        # Like NYPL2, where 1v holds only 01.01.00
+        self.add_folios(("1v", "01.01.00", "01.01.00"), ("2r", "01.01.01", "01.04.08"))
+
+        response = self.get_page()
+
+        self.assertEqual(self.stanza_dividers(response), [("01.01.00", "1v")])
+        self.assertEqual(self.line_breaks(response), [("01.01.01", "2r")])
