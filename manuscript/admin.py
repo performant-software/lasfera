@@ -82,12 +82,59 @@ class FolioAdminForm(forms.ModelForm):
         return cleaned_data
 
 
-class FolioInline(admin.StackedInline):
+def linked_image_link(folio, thumbnail=False):
+    """Link to a folio's row on the canvas linking page, labelled with the
+    linked image's position and manifest label"""
+    url = reverse(
+        "admin:manuscript_singlemanuscript_canvases", args=[folio.manuscript_id]
+    )
+    if not folio.canvas_id:
+        return format_html('<a href="{}">Not linked</a>', url)
+    position = (
+        f"Image {folio.canvas_index + 1}" if folio.canvas_index is not None else "Image"
+    )
+    label = f" · {folio.canvas_label}" if folio.canvas_label else ""
+    image = ""
+    if thumbnail and folio.image_id:
+        # image_id is usually a IIIF image service; drop the preview if not
+        image = format_html(
+            '<img src="{}/full/!200,200/0/default.jpg" alt="" loading="lazy" '
+            'style="display: block; max-width: 200px; max-height: 200px; '
+            'margin-bottom: 4px;" onerror="this.remove()">',
+            folio.image_id,
+        )
+    # the canvas linking page scrolls to and highlights this folio's row
+    return format_html(
+        '<a href="{}#folio-{}">{}{}{}</a>', url, folio.pk, image, position, label
+    )
+
+
+class FolioInline(admin.TabularInline):
+    """Compact list of a manuscript's folios for editing folio numbers and line
+    ranges. Other details are edited on each folio's own page, and images are
+    linked on the Link IIIF canvases page. Folios aren't added or deleted here:
+    deleting a folio also deletes its toponym aliases."""
+
     model = Folio
-    form = FolioAdminForm
     classes = ("collapse",)
-    extra = 1
-    readonly_fields = ("canvas_index", "canvas_label", "image_id")
+    extra = 0
+    can_delete = False
+    show_change_link = True
+    fields = (
+        "folio_number",
+        "line_code_range_start",
+        "line_code_range_end",
+        "linked_image",
+    )
+    readonly_fields = ("linked_image",)
+    ordering = ("canvas_index", "folio_number")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Linked image")
+    def linked_image(self, folio):
+        return linked_image_link(folio)
 
 
 class DetailInline(admin.StackedInline):
@@ -441,9 +488,11 @@ class FolioAdmin(ImportExportModelAdmin):
         "stanza_list",
         "line_range_display",
         "stanza_count",
+        "linked_image",
         "canvas_index",
         "canvas_label",
         "image_id",
+        "toponym_list",
     ]
 
     fieldsets = (
@@ -451,7 +500,8 @@ class FolioAdmin(ImportExportModelAdmin):
         (
             "IIIF Canvas",
             {
-                "fields": ("canvas_id", "canvas_label", "canvas_index", "image_id"),
+                # the linked image shows the canvas position, counting from 1
+                "fields": ("linked_image", "canvas_id", "canvas_label", "image_id"),
             },
         ),
         (
@@ -470,7 +520,53 @@ class FolioAdmin(ImportExportModelAdmin):
                 "fields": ("stanza_count", "stanza_list"),
             },
         ),
+        ("Toponyms", {"fields": ("toponym_list",)}),
+        ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
     )
+
+    @admin.display(description="Linked image")
+    def linked_image(self, obj):
+        if not obj.pk or not obj.manuscript_id:
+            return "-"
+        return linked_image_link(obj, thumbnail=True)
+
+    @admin.display(description="Toponym aliases on this folio")
+    def toponym_list(self, obj):
+        if not obj.pk:
+            return "-"
+        aliases = obj.locationalias_set.select_related("location").order_by(
+            "placename_alias", "id"
+        )
+        if not aliases:
+            return "None"
+        rows = []
+        for alias in aliases:
+            if alias.location:
+                location = alias.location
+                name = location.name or location.placename_modern or ""
+                toponym = format_html(
+                    '<a href="{}">{}</a> {}',
+                    reverse("admin:manuscript_location_change", args=[location.pk]),
+                    name or location.placename_id,
+                    f"({location.placename_id})" if name else "",
+                )
+            else:
+                toponym = "-"
+            rows.append(
+                (
+                    reverse("admin:manuscript_locationalias_change", args=[alias.pk]),
+                    alias.placename_alias or f"Alias {alias.pk}",
+                    toponym,
+                )
+            )
+        return format_html(
+            '<div style="max-height: 400px; overflow-y: auto;">'
+            '<table style="width: 100%;"><tr><th>Alias</th><th>Toponym</th></tr>'
+            "{}</table></div>",
+            format_html_join(
+                "", '<tr><td><a href="{}">{}</a></td><td>{}</td></tr>', rows
+            ),
+        )
 
     def stanza_count(self, obj):
         return obj.stanzas.count()

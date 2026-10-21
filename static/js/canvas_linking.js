@@ -225,6 +225,7 @@
 
   function buildRow(canvas, labelCounts) {
     const tr = document.createElement('tr');
+    tr.id = `image-${canvas.index + 1}`;
     const current = foliosByCanvas.get(canvas.id);
 
     const position = document.createElement('td');
@@ -378,6 +379,25 @@
     statusEl.hidden = true;
     form.hidden = false;
     update();
+    showLinkedRow();
+  }
+
+  // Rows are built after the page loads, so jump to a row named in the URL
+  // here: #folio-<id> for the image linked to that folio record (as linked
+  // from the manuscript's folio list), or #image-<position>
+  function showLinkedRow() {
+    let row = null;
+    const folioMatch = location.hash.match(/^#folio-(\d+)$/);
+    if (folioMatch) {
+      const folio = folios.find((f) => String(f.id) === folioMatch[1]);
+      row = folio && rows.find((r) => r.canvas.id === folio.canvas_id);
+    } else if (/^#image-\d+$/.test(location.hash)) {
+      row = rows.find((r) => `#${r.tr.id}` === location.hash);
+    }
+    if (!row) return;
+    row.tr.classList.add('is-target');
+    row.tr.scrollIntoView({ block: 'center' });
+    row.input.focus({ preventScroll: true });
   }
 
   filterEl.addEventListener('change', applyFilter);

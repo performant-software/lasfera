@@ -11,7 +11,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from manuscript.canvas_linking import clean_canvas_rows, link_canvases
-from manuscript.models import Folio, SingleManuscript
+from manuscript.models import Folio, Location, LocationAlias, SingleManuscript
 from manuscript.utils import get_canvases, normalize_folio_label
 
 MANIFEST_URL = "https://example.org/iiif/ms/manifest.json"
@@ -382,6 +382,66 @@ class LinkCanvasesViewTest(TestCase):
         )
         self.assertContains(response, self.url)
 
+    def test_change_form_lists_folios_compactly(self):
+        folio = Folio.objects.create(
+            manuscript=self.manuscript,
+            folio_number="1r",
+            canvas_id=canvas_row(3)["id"],
+            canvas_index=2,
+            canvas_label="Carta: 1r",
+        )
+        response = self.client.get(
+            reverse(
+                "admin:manuscript_singlemanuscript_change", args=[self.manuscript.pk]
+            )
+        )
+        self.assertContains(response, 'name="folio_set-0-line_code_range_start"')
+        self.assertContains(
+            response, f'{self.url}#folio-{folio.pk}">Image 3 · Carta: 1r'
+        )
+        self.assertContains(
+            response, reverse("admin:manuscript_folio_change", args=[folio.pk])
+        )
+        self.assertNotContains(response, 'name="folio_set-0-canvas_id"')
+        self.assertNotContains(response, 'name="folio_set-0-DELETE"')
+        self.assertNotContains(response, 'name="folio_set-__prefix__-folio_number"')
+
+    def test_folio_page_shows_image_and_toponyms(self):
+        folio = Folio.objects.create(
+            manuscript=self.manuscript,
+            folio_number="1r",
+            canvas_id=canvas_row(3)["id"],
+            canvas_index=2,
+            canvas_label="Carta: 1r",
+            image_id="https://example.org/image/3",
+        )
+        location = Location.objects.create(placename_id="T001", name="Rodi")
+        LocationAlias.objects.create(
+            placename_alias="Rhodes",
+            location=location,
+            manuscript=self.manuscript,
+            folio=folio,
+        )
+        response = self.client.get(
+            reverse("admin:manuscript_folio_change", args=[folio.pk])
+        )
+        self.assertContains(response, f"{self.url}#folio-{folio.pk}")
+        self.assertContains(response, "https://example.org/image/3/full/!200,200/")
+        self.assertContains(response, "Image 3 · Carta: 1r")
+        self.assertContains(response, "Rhodes")
+        self.assertContains(
+            response, reverse("admin:manuscript_location_change", args=[location.pk])
+        )
+        self.assertContains(response, "Rodi</a> (T001)")
+
+    def test_folio_page_edits_notes(self):
+        folio = Folio.objects.create(manuscript=self.manuscript, folio_number="1r")
+        response = self.client.get(
+            reverse("admin:manuscript_folio_change", args=[folio.pk])
+        )
+        self.assertContains(response, 'name="folio_includes_map"')
+        self.assertContains(response, 'name="folio_notes"')
+
     def test_saving(self):
         rows = json.dumps([canvas_row(1, "1r"), canvas_row(2)])
         response = self.client.post(self.url, {"rows": rows})
@@ -415,3 +475,125 @@ class LinkCanvasesViewTest(TestCase):
         )
         self.client.force_login(staff)
         self.assertEqual(self.client.get(self.url).status_code, 403)
+
+
+def custom_manifest(canvases):
+    """A v2 manifest from (canvas id suffix, label, image id suffix) tuples"""
+    return {
+        "sequences": [
+            {
+                "canvases": [
+                    {
+                        "@id": f"https://example.org/iiif/ms/canvas/{canvas_id}",
+                        "label": label,
+                        "images": [
+                            {
+                                "resource": {
+                                    "service": {
+                                        "@id": f"https://example.org/image/{image}"
+                                    }
+                                }
+                            }
+                        ],
+                    }
+                    for canvas_id, label, image in canvases
+                ]
+            }
+        ]
+    }
+
+
+class VerifyCanvasLinksTest(TestCase):
+    def setUp(self):
+        self.manuscript = SingleManuscript.objects.create(
+            item_id=1, siglum="Test1", iiif_url=MANIFEST_URL
+        )
+
+    def add_folio(self, number, canvas_id, index, label, image):
+        return Folio.objects.create(
+            manuscript=self.manuscript,
+            folio_number=number,
+            canvas_id=f"https://example.org/iiif/ms/canvas/{canvas_id}",
+            canvas_index=index,
+            canvas_label=label,
+            image_id=f"https://example.org/image/{image}",
+        )
+
+    def run_command(self, canvases, *args):
+        out = StringIO()
+        with mock.patch(
+            "manuscript.management.commands.verify_canvas_links.fetch_manifest",
+            return_value=custom_manifest(canvases),
+        ):
+            call_command("verify_canvas_links", *args, stdout=out)
+        return out.getvalue()
+
+    def test_unchanged_links(self):
+        folio = self.add_folio("1r", "a", 0, "1r", "img-a")
+        out = self.run_command([("a", "1r", "img-a")])
+
+        self.assertIn("1 unchanged", out)
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_index, 0)
+
+    def test_moved_and_relabelled_canvas_is_updated(self):
+        folio = self.add_folio("1r", "a", 0, "1r", "img-a")
+        out = self.run_command([("cover", "Cover", "img-c"), ("a", "f. 1r", "img-a")])
+
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_index, 1)
+        self.assertEqual(folio.canvas_label, "f. 1r")
+        self.assertIn("position or label changed: 1r", out)
+
+    def test_relinks_by_image_id(self):
+        folio = self.add_folio("1r", "a", 0, "1r", "img-a")
+        out = self.run_command([("new-b", "1v", "img-b"), ("new-a", "1r", "img-a")])
+
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_id, "https://example.org/iiif/ms/canvas/new-a")
+        self.assertEqual(folio.canvas_index, 1)
+        self.assertIn("re-linked by image ID: 1r", out)
+
+    def test_relinks_by_position_and_label(self):
+        folio = self.add_folio("1r", "a", 1, "1r", "img-a")
+        self.run_command([("x", "Cover", "img-x"), ("y", "1r", "img-y")])
+
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_id, "https://example.org/iiif/ms/canvas/y")
+        self.assertEqual(folio.image_id, "https://example.org/image/img-y")
+
+    def test_reports_links_it_cannot_fix(self):
+        folio = self.add_folio("1r", "a", 0, "1r", "img-a")
+        out = self.run_command([("x", "Cover", "img-x")])
+
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_id, "https://example.org/iiif/ms/canvas/a")
+        self.assertIn("canvas gone, and no replacement found: 1r", out)
+        self.assertIn("1 could not be re-linked", out)
+
+    def test_does_not_take_a_canvas_linked_to_another_folio(self):
+        self.add_folio("1v", "b", 1, "1v", "img-b")
+        folio = self.add_folio("1r", "a", 0, "1r", "img-b")
+        out = self.run_command([("b", "1v", "img-b")])
+
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_id, "https://example.org/iiif/ms/canvas/a")
+        self.assertIn("its replacement is linked to another folio: 1r", out)
+
+    def test_dry_run_does_not_save(self):
+        folio = self.add_folio("1r", "a", 0, "1r", "img-a")
+        self.run_command([("new-a", "1r", "img-a")], "--dry-run")
+
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_id, "https://example.org/iiif/ms/canvas/a")
+
+    def test_reports_manifests_it_cannot_load(self):
+        self.add_folio("1r", "a", 0, "1r", "img-a")
+        out = StringIO()
+        with mock.patch(
+            "manuscript.management.commands.verify_canvas_links.fetch_manifest",
+            side_effect=Exception("403 Forbidden"),
+        ):
+            call_command("verify_canvas_links", stdout=out)
+        self.assertIn("Test1: could not load manifest (403 Forbidden)", out.getvalue())
+        self.assertIn("1 manifests could not be loaded", out.getvalue())
