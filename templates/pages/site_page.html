@@ -7,9 +7,9 @@
 <main class="w-full">
     <!-- max-w-none removes the 2/3 width restriction -->
     <div class="px-4 md:px-10 mx-auto w-full max-w-none"> 
-        <article class="prose prose-lg max-w-none mx-auto">
+        <article class="prose prose-lg max-w-none mx-auto flow-root">
             {% for block in page.body %}
-                <div class="my-8 block-{{ block.block_type }}">
+                <div class="my-8 block-{{ block.block_type }}{% if block.block_type == 'heading' or block.block_type == 'video' or block.block_type == 'accordion' %} clear-both{% endif %}">
                     {% include_block block %}
                 </div>
             {% endfor %}
