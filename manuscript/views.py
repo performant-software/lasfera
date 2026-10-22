@@ -553,12 +553,18 @@ def manuscripts(request: HttpRequest):
 
     # optimization: use values() and list
     manuscripts = list(
-        SingleManuscript.objects.values("id", "shelfmark", "siglum", "library")
+        SingleManuscript.objects.annotate(
+            has_variants=Exists(
+                TextualVariant.objects.filter(manuscript=OuterRef("pk"))
+            )
+        ).values("id", "shelfmark", "siglum", "library", "iiif_url", "has_variants")
     )
     libraries = Library.objects.values("id", "city", "library")
     library_id_map = {library["id"]: library for library in libraries}
 
     for manuscript in manuscripts:
+        # "with images" means a IIIF manifest is available to view page images
+        manuscript["has_images"] = bool(manuscript["iiif_url"])
         library_id = manuscript["library"]
         library = library_id_map.get(library_id)
         if library:
@@ -576,14 +582,22 @@ def manuscripts(request: HttpRequest):
                 manuscript["shelfmark"] or "no shelfmark",
                 manuscript["siglum"] or "no siglum",
             )
-    sigla = [manuscript["siglum"] for manuscript in manuscripts if manuscript["siglum"]]
+    sigla = [
+        {
+            "siglum": manuscript["siglum"],
+            "has_images": manuscript["has_images"],
+            "has_variants": manuscript["has_variants"],
+        }
+        for manuscript in manuscripts
+        if manuscript["siglum"]
+    ]
 
     return render(
         request,
         "manuscripts.html",
         {
             "manuscripts": sorted(manuscripts, key=lambda m: m["shelfmark_fmt"]),
-            "sigla_index": sorted(sigla),
+            "sigla_index": sorted(sigla, key=lambda s: s["siglum"]),
             "snippet": ManuscriptsIntroduction.objects.first(),
         },
     )
