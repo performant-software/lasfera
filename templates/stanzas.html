@@ -217,68 +217,61 @@
                       <div class="flex-grow border-t border-gray-300"></div>
                     </div>
                   {% endif %}
-                  <div class="grid grid-cols-2 gap-8 mb-8">
-                    <!-- Original stanza -->
-                    <div class="w-full">
-                      {% for stanza in stanza_pair.original %}
-                        {% if stanza.folio_break %}
-                          <!-- Folio changes mid-stanza -->
-                          <div class="relative flex items-center my-1 text-sm folio-divider folio-divider-inline" data-folio-number="{{ stanza.folio_break.folio_number }}" data-canvas-id="{{ stanza.folio_break.canvas_id|default_if_none:'' }}">
-                            <div class="text-gray-500 pr-2">
-                              Folio {{ stanza.folio_break.folio_number }}
-                            </div>
-                            <div class="flex-grow border-t border-dashed border-gray-300"></div>
-                          </div>
-                        {% endif %}
-                        <div class="relative">
-                          <div class="flex gap-2 items-start">
-                            <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-36" 
-                                href="{% url 'manuscript_stanzas' default_manuscript.siglum %}#{{stanza.stanza_line_code_starts}}"
-                                id="{{stanza.stanza_line_code_starts}}"
-                                title="Anchor link to line code {{ stanza.stanza_line_code_starts}}"
-                                {% with stanza_folio=stanza.folios.all.0 %}
-                                data-folio="{{ stanza_folio.folio_number }}"
-                                {% endwith %}
-                                onclick="navigateToFolio(event, this)">
-                              <span class="line-text font-serif text-red-700 text-sm">
-                                {{ stanza.stanza_line_code_starts }}
-                              </span>
-                            </a>
-                            <span class="flex-1 pl-4{% if stanza.is_rubric %} text-xl font-bold{% endif %}">
-                              {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
-                            </span>
-                          </div>
+                  {% for segment in stanza_pair.segments %}
+                    {% if segment.folio_break %}
+                      <!-- Folio changes mid-stanza -->
+                      <div class="relative flex items-center my-2 text-sm folio-divider folio-divider-inline" data-folio-number="{{ segment.folio_break.folio_number }}" data-canvas-id="{{ segment.folio_break.canvas_id|default_if_none:'' }}">
+                        <div class="text-gray-500 pr-4">
+                          Folio {{ segment.folio_break.folio_number }}
                         </div>
-                      {% endfor %}
-                    </div>
-                    <!-- Translated stanza -->
-                    <div class="w-full">
-                      {% for stanza in stanza_pair.translated %}
-                        {% if stanza.folio_break %}
-                          <!-- Matches the mid-stanza folio marker in the original column -->
-                          <div class="relative flex items-center my-1 text-sm" aria-hidden="true">
-                            <div class="text-gray-500 pr-2">
-                              Folio {{ stanza.folio_break.folio_number }}
-                            </div>
-                            <div class="flex-grow border-t border-dashed border-gray-300"></div>
-                          </div>
-                        {% endif %}
-                        <div class="relative">
-                          <div class="flex gap-2 items-start">
-                            <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-36" href="#{{stanza.stanza_line_code_starts}}"
-                                id="{{stanza.stanza_line_code_starts}}">
-                              <span class="line-text font-serif text-red-700 text-sm">
-                                {{ stanza.stanza_line_code_starts }}
+                        <div class="flex-grow border-t border-dashed border-gray-300"></div>
+                      </div>
+                    {% endif %}
+                    <div class="grid grid-cols-2 gap-8 {% if forloop.last %}mb-8{% else %}mb-2{% endif %}">
+                      <!-- Original stanza -->
+                      <div class="w-full">
+                        {% for stanza in segment.original %}
+                          <div class="relative">
+                            <div class="flex gap-2 items-start">
+                              <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-36" 
+                                  href="{% url 'manuscript_stanzas' default_manuscript.siglum %}#{{stanza.stanza_line_code_starts}}"
+                                  id="{{stanza.stanza_line_code_starts}}"
+                                  title="Anchor link to line code {{ stanza.stanza_line_code_starts}}"
+                                  {% with stanza_folio=stanza.folios.all.0 %}
+                                  data-folio="{{ stanza_folio.folio_number }}"
+                                  {% endwith %}
+                                  onclick="navigateToFolio(event, this)">
+                                <span class="line-text font-serif text-red-700 text-sm">
+                                  {{ stanza.stanza_line_code_starts }}
+                                </span>
+                              </a>
+                              <span class="flex-1 pl-4{% if stanza.is_rubric %} text-xl font-bold{% endif %}">
+                                {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
                               </span>
-                            </a>
-                            <span class="flex-1 pl-4{% if stanza.is_rubric %} text-xl font-bold{% endif %}">
-                              {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
-                            </span>
+                            </div>
                           </div>
-                        </div>
-                      {% endfor %}
+                        {% endfor %}
+                      </div>
+                      <!-- Translated stanza -->
+                      <div class="w-full">
+                        {% for stanza in segment.translated %}
+                          <div class="relative">
+                            <div class="flex gap-2 items-start">
+                              <a class="line-code sr-only target:not-sr-only no-underline scroll-mt-36" href="#{{stanza.stanza_line_code_starts}}"
+                                  id="{{stanza.stanza_line_code_starts}}">
+                                <span class="line-text font-serif text-red-700 text-sm">
+                                  {{ stanza.stanza_line_code_starts }}
+                                </span>
+                              </a>
+                              <span class="flex-1 pl-4{% if stanza.is_rubric %} text-xl font-bold{% endif %}">
+                                {{ stanza.unescaped_stanza_text|annotate_text:stanza.annotations|safe }}
+                              </span>
+                            </div>
+                          </div>
+                        {% endfor %}
+                      </div>
                     </div>
-                  </div>
+                  {% endfor %}
                 {% endfor %}
                 <!-- Book separator -->
                 <div class="flex items-center my-16 py-4">

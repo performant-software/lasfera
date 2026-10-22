@@ -53,6 +53,27 @@ def get_annotation_map(model_class, stanzas, ct_id, note_type, manuscript=None):
     return mapping
 
 
+def split_at_folio_breaks(original_lines, translated_lines):
+    """Split a stanza into segments where the folio changes mid-stanza, so each
+    break can be shown across both columns. Each segment has its original and
+    translated lines and the folio starting there (None for the first). The
+    translation is split at the same line code, or the first line after it."""
+    segments = [{"original": [], "translated": [], "folio_break": None}]
+    break_codes = []
+    for line in original_lines:
+        if line.get("folio_break"):
+            segments.append(
+                {"original": [], "translated": [], "folio_break": line["folio_break"]}
+            )
+            break_codes.append(line_code_to_numeric(line["stanza_line_code_starts"]))
+        segments[-1]["original"].append(line)
+    for line in translated_lines:
+        code = line_code_to_numeric(line["stanza_line_code_starts"])
+        index = sum(1 for break_code in break_codes if code and code >= break_code)
+        segments[index]["translated"].append(line)
+    return segments
+
+
 def manuscript_stanzas(request, siglum):
     # Get the requested manuscript
     manuscript = get_object_or_404(SingleManuscript, siglum=siglum)
@@ -213,14 +234,6 @@ def manuscript_stanzas(request, siglum):
                             )
                         else:
                             line["folio_break"] = current_folio
-                            # Mark the same line in the translation so the
-                            # columns stay level
-                            for translated_line in translated_stanza_group:
-                                if (
-                                    translated_line["stanza_line_code_starts"]
-                                    == line_code
-                                ):
-                                    translated_line["folio_break"] = current_folio
                         logger.info(
                             f"New folio at line {line_code}: {current_folio.folio_number}"
                         )
@@ -228,6 +241,10 @@ def manuscript_stanzas(request, siglum):
                     # stanza starts at its first verse line
                     if not line_code.endswith(".00"):
                         at_stanza_start = False
+
+            stanza_group["segments"] = split_at_folio_breaks(
+                original_stanzas, translated_stanza_group or []
+            )
 
             # Add the stanza group to the book
             paired_books[book_number].append(stanza_group)

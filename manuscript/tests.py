@@ -673,6 +673,19 @@ class StanzaFolioDividerTest(TestCase):
         self.assertEqual(self.line_breaks(response), [])
         self.assertNotContains(response, "folio-divider-inline")
 
+    def segments(self, response, stanza):
+        """(folio starting the segment, original codes, translated codes) for
+        each segment of a stanza"""
+        group = response.context["paired_books"][1][stanza - 1]
+        return [
+            (
+                segment["folio_break"].folio_number if segment["folio_break"] else None,
+                [line["stanza_line_code_starts"] for line in segment["original"]],
+                [line["stanza_line_code_starts"] for line in segment["translated"]],
+            )
+            for segment in group["segments"]
+        ]
+
     def test_break_mid_stanza(self):
         # Like Vat1, where 240r starts at line 6 of stanza 6
         self.add_folios(("1r", "01.01.00", "01.02.05"), ("1v", "01.02.06", "01.04.08"))
@@ -681,23 +694,43 @@ class StanzaFolioDividerTest(TestCase):
 
         self.assertEqual(self.stanza_dividers(response), [("01.01.00", "1r")])
         self.assertEqual(self.line_breaks(response), [("01.02.06", "1v")])
-        self.assertEqual(self.line_breaks(response, "translated"), [("01.02.06", "1v")])
+        lines = [f"01.02.{line:02d}" for line in range(9)]
+        self.assertEqual(
+            self.segments(response, 2),
+            [(None, lines[:6], lines[:6]), ("1v", lines[6:], lines[6:])],
+        )
 
-        # The marker comes between lines 5 and 6, carrying what tify-sync.js
-        # needs to turn the viewer, in the original column only
+        # One full-width marker between the two parts of the stanza, carrying
+        # what tify-sync.js needs to turn the viewer
         html = response.content.decode()
         marker = html.index('data-folio-number="1v"')
-        self.assertLess(html.index("Original 01.02.05"), marker)
+        self.assertLess(html.index("Translated 01.02.05"), marker)
         self.assertLess(marker, html.index("Original 01.02.06"))
         self.assertContains(
             response,
-            'class="relative flex items-center my-1 text-sm folio-divider '
+            'class="relative flex items-center my-2 text-sm folio-divider '
             'folio-divider-inline" data-folio-number="1v" '
             'data-canvas-id="https://example.org/iiif/ms/canvas/1v"',
         )
-        self.assertContains(response, 'data-folio-number="1v"', count=1)
-        translated_marker = html.index("Folio 1v", html.index("Translated 01.02.05"))
-        self.assertLess(translated_marker, html.index("Translated 01.02.06"))
+        self.assertContains(response, "Folio 1v", count=1)
+
+    def test_break_mid_stanza_without_matching_translation_line(self):
+        # The translation has no line 01.02.06, so it's split at the next line
+        StanzaTranslated.objects.filter(stanza_line_code_starts="01.02.06").delete()
+        self.add_folios(("1r", "01.01.00", "01.02.05"), ("1v", "01.02.06", "01.04.08"))
+
+        response = self.get_page()
+
+        self.assertEqual(
+            [
+                (folio, translated)
+                for folio, _, translated in self.segments(response, 2)
+            ],
+            [
+                (None, [f"01.02.{line:02d}" for line in range(6)]),
+                ("1v", ["01.02.07", "01.02.08"]),
+            ],
+        )
 
     def test_break_at_first_verse_line_is_between_stanzas(self):
         # The stanza number (.00) falls in the gap before the folio's range
