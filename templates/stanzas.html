@@ -139,26 +139,41 @@
                   </div>
                 </div>
                 <div class="p-4 bg-white rounded-b-lg">
-                  <div class="grid grid-cols-1 gap-4">
+                  <div class="grid grid-cols-1 gap-4" x-data="{ onlyImages: false, onlyVariants: false }">
 
                     <!-- Manuscript Select -->
                     <div class="w-full">
                       <label for="manuscript-select" class="block text-gray-700 text-sm font-bold mb-2">Select Manuscript:</label>
-                      <select 
-                        id="manuscript-select" 
+                      <select
+                        id="manuscript-select"
                         onchange="window.location.href=`/manuscripts/${this.value}/stanzas/`"
                         class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
                         {% for manuscript in manuscripts %}
                             {% if manuscript.iiif_url or manuscript.has_variants %}
                             <option value="{{ manuscript.siglum }}"
-                                    {% if manuscript.siglum == default_manuscript.siglum %}selected{% endif %}>
+                                    {% if manuscript.siglum == default_manuscript.siglum %}selected{% endif %}
+                                    :hidden="(onlyImages && !{{ manuscript.iiif_url|yesno:'true,false' }}) || (onlyVariants && !{{ manuscript.has_variants|yesno:'true,false' }})">
                               {{ manuscript|format_ms }}
                             </option>
                             {% endif %}
                         {% endfor %}
                       </select>
                     </div>
-                    
+
+                    <!-- Manuscript filters -->
+                    <div class="w-full space-y-2">
+                      <label class="flex items-center cursor-pointer">
+                        <input type="checkbox" x-model="onlyImages"
+                          class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer">
+                        <span class="ml-2 pt-1 block text-[1rem]">Only show manuscripts with images</span>
+                      </label>
+                      <label class="flex items-center cursor-pointer">
+                        <input type="checkbox" x-model="onlyVariants"
+                          class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer">
+                        <span class="ml-2 pt-1 block text-[1rem]">Only show manuscripts with textual variants</span>
+                      </label>
+                    </div>
+
                     <!-- Line Code Display -->
                     <div class="w-full">
                       <label for="lineCodeDisplay" class="block text-gray-700 text-sm font-bold mb-2">Line code display:</label>
