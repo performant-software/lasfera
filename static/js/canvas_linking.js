@@ -33,6 +33,16 @@
   }
   const folioKey = (number) => normalizeFolioLabel(number) || number.trim().toLowerCase();
 
+  // The folio number in a manifest label in its usual form, e.g. "53r" from
+  // "Carta: 53r" or "53 recto", or null if the label doesn't contain one
+  function folioNumberFromLabel(label) {
+    const match = normalizeFolioLabel(label).match(/^(\d+)([rv])$/);
+    if (match) return `${Number(match[1])}${match[2]}`;
+    // roman-numbered flyleaves, e.g. "Ir", when that's the whole label
+    if (/^[ivxlc]+[rv]$/i.test(label.trim())) return label.trim();
+    return null;
+  }
+
   // Flatten a IIIF v2 or v3 label into a plain string
   function labelToString(label) {
     if (!label) return '';
@@ -273,16 +283,17 @@
     if (submitted && input.value !== initial) dirty = true;
     folioCell.appendChild(input);
 
-    // offer the manifest label as the folio number when it looks like one
+    // offer the folio number in the manifest label, when it has one
     let suggestion = null;
-    if (RECTO_VERSO.test(normalizeFolioLabel(canvas.label))) {
+    const suggestedNumber = folioNumberFromLabel(canvas.label);
+    if (suggestedNumber) {
       suggestion = document.createElement('button');
       suggestion.type = 'button';
       suggestion.className = 'canvas-suggestion';
-      suggestion.textContent = `Use ${canvas.label}`;
-      suggestion.title = 'Use the manifest label as the folio number';
+      suggestion.textContent = `Use ${suggestedNumber}`;
+      suggestion.title = `Use the folio number from the manifest label "${canvas.label}"`;
       suggestion.addEventListener('click', () => {
-        input.value = canvas.label;
+        input.value = suggestedNumber;
         input.dispatchEvent(new Event('input'));
         input.focus();
       });
