@@ -2,6 +2,11 @@ name: "Tests"
 
 on:
   pull_request:
+  # Heroku's automatic deploys wait for these checks on the merged commit
+  push:
+    branches:
+      - "develop"
+      - "main"
   workflow_dispatch:
 
 permissions:
