@@ -40,6 +40,9 @@ SILENCED_SYSTEM_CHECKS = ["security.W019"]
 
 # CARTO API key for the gazetteer basemaps (client-exposed)
 CARTO_API_KEY = env("CARTO_API_KEY", default="")
+# Show a banner on every page saying this is a test site whose changes won't
+# carry over to the live site; turn on for staging
+TEST_SITE_BANNER = env.bool("TEST_SITE_BANNER", default=False)
 
 # Application definition
 
@@ -121,6 +124,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.request",
                 "config.context_processors.carto",
+                "config.context_processors.test_site_banner",
             ],
         },
     },
