@@ -5,7 +5,8 @@ from django.contrib import admin, messages
 from django.contrib.admin.utils import unquote
 from django.contrib.contenttypes.admin import GenericTabularInline
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Count
+from django.db.models import Count, Value
+from django.db.models.functions import Concat
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -469,12 +470,14 @@ class FolioAdmin(ImportExportModelAdmin):
     form = FolioAdminForm
 
     list_display = [
-        "manuscript",
+        "folio_display",
         "folio_number",
         "canvas_label",
         "line_range_display",
         "stanza_count",
     ]
+    list_select_related = ["manuscript"]
+    ordering = ["manuscript__siglum", "folio_number"]
     list_filter = ["manuscript", ("canvas_id", admin.EmptyFieldListFilter)]
     search_fields = [
         "folio_number",
@@ -573,7 +576,17 @@ class FolioAdmin(ImportExportModelAdmin):
 
     stanza_count.short_description = "Number of Stanzas"
 
+    @admin.display(
+        description="Folio",
+        ordering=Concat("manuscript__siglum", Value(" "), "folio_number"),
+    )
+    def folio_display(self, obj):
+        manuscript = obj.manuscript or "No manuscript"
+        return f"{manuscript} · {obj.folio_number or '(no folio number)'}"
+
     def line_range_display(self, obj):
+        if not obj.line_code_range_start:
+            return "-"
         end = obj.line_code_range_end or "End"
         return f"{obj.line_code_range_start} → {end}"
 

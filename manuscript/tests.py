@@ -441,6 +441,25 @@ class LinkCanvasesViewTest(TestCase):
         )
         self.assertContains(response, "Rodi</a> (T001)")
 
+    def test_folio_list_links_by_manuscript_and_folio(self):
+        folio = Folio.objects.create(manuscript=self.manuscript, folio_number="1r")
+        Folio.objects.create(manuscript=self.manuscript)
+        response = self.client.get(reverse("admin:manuscript_folio_changelist"))
+
+        folio_url = reverse("admin:manuscript_folio_change", args=[folio.pk])
+        self.assertContains(
+            response, f'<a href="{folio_url}">Test1 · 1r</a>', html=True
+        )
+        self.assertContains(response, "Test1 · (no folio number)")
+        # sorting by the combined column and by folio number alone both work
+        for column in ["1", "2"]:
+            self.assertEqual(
+                self.client.get(
+                    reverse("admin:manuscript_folio_changelist"), {"o": column}
+                ).status_code,
+                200,
+            )
+
     def test_folio_page_edits_notes(self):
         folio = Folio.objects.create(manuscript=self.manuscript, folio_number="1r")
         response = self.client.get(
