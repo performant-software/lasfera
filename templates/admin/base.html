@@ -1,0 +1,10 @@
+{% extends "admin/base.html" %}
+{% comment %}
+  Extends Django's own admin/base.html (the admin theme's base_site.html
+  builds on this) to show the test site banner above the admin header.
+{% endcomment %}
+
+{% block header %}
+  {% include "partials/test_site_banner.html" %}
+  {{ block.super }}
+{% endblock %}

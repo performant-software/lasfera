@@ -1,0 +1,10 @@
+{% comment %}
+  Shown when the TEST_SITE_BANNER setting is on (e.g. on staging). Styled
+  inline so it looks the same on the site and in the admin.
+{% endcomment %}
+{% if TEST_SITE_BANNER %}
+  <div role="note" style="background: #fef3c7; color: #78350f; border-bottom: 1px solid #f59e0b; padding: 8px 16px; text-align: center; font-size: 0.875rem; line-height: 1.4;">
+    <strong>Test site.</strong>
+    Anything you add or change here may be removed, and won't carry over to the live site.
+  </div>
+{% endif %}
