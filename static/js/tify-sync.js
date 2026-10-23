@@ -26,6 +26,10 @@ const TifySync = {
       }
     }
     
+    // Open the viewer on the reader's current folio rather than on the
+    // manifest's first page
+    const initialPage = this.initialPage();
+
     // Initialize Tify viewer
     this.viewer = new Tify({
       container: `#${containerId}`,
@@ -34,6 +38,7 @@ const TifySync = {
       view: '', // Default to scan view
       optionsResetOnPageChange: ['pan'],
       urlQueryKey: null, // Disable URL parameter changes to avoid conflicts
+      ...(initialPage ? { pages: [initialPage] } : {}),
     });
 
     this.viewer.ready.then(() => {
@@ -50,6 +55,32 @@ const TifySync = {
     return true;
   },
   
+  // The viewer page for the folio the reader is at: the last folio divider
+  // above the lower edge of the band the scroll observer watches (20-40% from
+  // the top of the window). Null if there's none or it has no matching image.
+  initialPage() {
+    if (!this.manifestData) {
+      return null;
+    }
+    const bandBottom = window.innerHeight * 0.4;
+    let divider = null;
+    for (const candidate of document.querySelectorAll('.folio-divider')) {
+      if (candidate.getBoundingClientRect().top > bandBottom) {
+        break;
+      }
+      divider = candidate;
+    }
+    if (!divider) {
+      return null;
+    }
+    const index = this.findCanvasIndex(
+      this.getCanvases(this.manifestData),
+      divider.dataset.folioNumber,
+      divider.dataset.canvasId || null,
+    );
+    return index === -1 ? null : index + 1;
+  },
+
   setupEventListeners() {
     // Listen for custom events from Tify
     // Note: Tify might emit certain events when page changes
@@ -165,6 +196,13 @@ const TifySync = {
         
         // Tify uses 1-based page numbers
         const tifyPageNumber = pageIndex + 1;
+
+        // Don't reopen the page the viewer is already showing
+        const currentPages = this.viewer && this.viewer.options && this.viewer.options.pages;
+        if (currentPages && currentPages.length === 1 && currentPages[0] === tifyPageNumber) {
+          console.log('Viewer is already on page', tifyPageNumber);
+          return;
+        }
         
         // Navigate to the page using Tify's API
         // If Tify provides a direct method to go to a page:
