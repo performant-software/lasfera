@@ -1,12 +1,20 @@
+import json
+
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.admin.utils import unquote
 from django.contrib.contenttypes.admin import GenericTabularInline
-from django.db.models import Count
-from django.urls import reverse
-from django.utils.html import format_html
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db.models import Count, Value
+from django.db.models.functions import Concat
+from django.shortcuts import redirect
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
+from django.utils.html import format_html, format_html_join
 from import_export.admin import ImportExportModelAdmin
 
 from common.admin import StripDivMixin
+from manuscript.canvas_linking import clean_canvas_rows, link_canvases
 from manuscript.models import (
     AuthorityFile,
     Codex,
@@ -59,10 +67,75 @@ class StanzaInline(admin.StackedInline):
     )
 
 
-class FolioInline(admin.StackedInline):
+class FolioAdminForm(forms.ModelForm):
+    class Meta:
+        model = Folio
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if "canvas_id" in self.changed_data:
+            # the recorded canvas details describe the previously linked
+            # canvas, so drop them when the canvas ID is changed by hand
+            self.instance.canvas_index = None
+            self.instance.canvas_label = None
+            self.instance.image_id = None
+        return cleaned_data
+
+
+def linked_image_link(folio, thumbnail=False):
+    """Link to a folio's row on the canvas linking page, labelled with the
+    linked image's position and manifest label"""
+    url = reverse(
+        "admin:manuscript_singlemanuscript_canvases", args=[folio.manuscript_id]
+    )
+    if not folio.canvas_id:
+        return format_html('<a href="{}">Not linked</a>', url)
+    position = (
+        f"Image {folio.canvas_index + 1}" if folio.canvas_index is not None else "Image"
+    )
+    label = f" · {folio.canvas_label}" if folio.canvas_label else ""
+    image = ""
+    if thumbnail and folio.image_id:
+        # image_id is usually a IIIF image service; drop the preview if not
+        image = format_html(
+            '<img src="{}/full/!200,200/0/default.jpg" alt="" loading="lazy" '
+            'style="display: block; max-width: 200px; max-height: 200px; '
+            'margin-bottom: 4px;" onerror="this.remove()">',
+            folio.image_id,
+        )
+    # the canvas linking page scrolls to and highlights this folio's row
+    return format_html(
+        '<a href="{}#folio-{}">{}{}{}</a>', url, folio.pk, image, position, label
+    )
+
+
+class FolioInline(admin.TabularInline):
+    """Compact list of a manuscript's folios for editing folio numbers and line
+    ranges. Other details are edited on each folio's own page, and images are
+    linked on the Link IIIF canvases page. Folios aren't added or deleted here:
+    deleting a folio also deletes its toponym aliases."""
+
     model = Folio
     classes = ("collapse",)
-    extra = 1
+    extra = 0
+    can_delete = False
+    show_change_link = True
+    fields = (
+        "folio_number",
+        "line_code_range_start",
+        "line_code_range_end",
+        "linked_image",
+    )
+    readonly_fields = ("linked_image",)
+    ordering = ("canvas_index", "folio_number")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Linked image")
+    def linked_image(self, folio):
+        return linked_image_link(folio)
 
 
 class DetailInline(admin.StackedInline):
@@ -268,9 +341,120 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
         "library",
     ]
 
+    change_form_template = "admin/manuscript/singlemanuscript/change_form.html"
+
     @admin.display(boolean=True, description="IIIF Available")
     def has_iiif_url(self, obj):
         return bool(obj.iiif_url)
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/canvases/",
+                self.admin_site.admin_view(self.link_canvases_view),
+                name="manuscript_singlemanuscript_canvases",
+            ),
+            *super().get_urls(),
+        ]
+
+    def link_canvases_view(self, request, object_id):
+        """Page for linking the manuscript's folios to its IIIF canvases by hand"""
+        manuscript = self.get_object(request, unquote(object_id))
+        if manuscript is None:
+            return self._get_obj_does_not_exist_redirect(request, self.opts, object_id)
+        if not request.user.has_perm("manuscript.change_folio"):
+            raise PermissionDenied
+
+        change_url = reverse(
+            "admin:manuscript_singlemanuscript_change", args=[manuscript.pk]
+        )
+        if not manuscript.iiif_url:
+            messages.warning(request, "This manuscript has no IIIF manifest URL.")
+            return redirect(change_url)
+
+        can_create = request.user.has_perm("manuscript.add_folio")
+        submitted = None
+        if request.method == "POST":
+            try:
+                raw_rows = json.loads(request.POST.get("rows", ""))
+            except ValueError:
+                raw_rows = None
+            try:
+                rows = clean_canvas_rows(raw_rows)
+                counts, created = link_canvases(manuscript, rows, can_create=can_create)
+            except ValidationError as e:
+                for message in e.messages:
+                    messages.error(request, message)
+                # keep what was entered so it can be corrected
+                if isinstance(raw_rows, list):
+                    submitted = {
+                        str(row.get("id")): str(row.get("folio") or "")
+                        for row in raw_rows
+                        if isinstance(row, dict)
+                    }
+            else:
+                if counts:
+                    messages.success(
+                        request,
+                        f"Saved: linked {counts['linked']}, unlinked "
+                        f"{counts['unlinked']}, and created {counts['created']} "
+                        f"new folio record{'' if counts['created'] == 1 else 's'}.",
+                    )
+                    if created:
+                        messages.warning(
+                            request,
+                            format_html(
+                                "Add a line range to the new folio records so "
+                                "the text can turn to them: {}",
+                                format_html_join(
+                                    ", ",
+                                    '<a href="{}">{}</a>',
+                                    (
+                                        (
+                                            reverse(
+                                                "admin:manuscript_folio_change",
+                                                args=[folio.pk],
+                                            ),
+                                            folio.folio_number,
+                                        )
+                                        for folio in created
+                                    ),
+                                ),
+                            ),
+                        )
+                else:
+                    messages.info(request, "No changes to save.")
+                return redirect(request.path)
+
+        folios = manuscript.folio_set.annotate(
+            toponym_count=Count("locationalias", distinct=True)
+        )
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.opts,
+            "title": f"Link IIIF canvases: {manuscript}",
+            "manuscript": manuscript,
+            "change_url": change_url,
+            "can_create": can_create,
+            "folios": [
+                {
+                    "id": folio.pk,
+                    "number": folio.folio_number or "",
+                    "canvas_id": folio.canvas_id,
+                    "line_start": folio.line_code_range_start,
+                    "line_end": folio.line_code_range_end,
+                    "toponyms": folio.toponym_count,
+                    "admin_url": reverse(
+                        "admin:manuscript_folio_change", args=[folio.pk]
+                    ),
+                }
+                for folio in folios
+            ],
+            "submitted": submitted,
+        }
+        return TemplateResponse(
+            request, "admin/manuscript/singlemanuscript/link_canvases.html", context
+        )
 
     class Media:
         js = ("js/text_annotations.js",)
@@ -283,20 +467,46 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
 @admin.register(Folio)
 class FolioAdmin(ImportExportModelAdmin):
     resource_class = FolioResource
+    form = FolioAdminForm
 
-    list_display = ["manuscript", "folio_number", "line_range_display", "stanza_count"]
-    list_filter = ["manuscript"]
+    list_display = [
+        "folio_display",
+        "folio_number",
+        "canvas_label",
+        "line_range_display",
+        "stanza_count",
+    ]
+    list_select_related = ["manuscript"]
+    ordering = ["manuscript__siglum", "folio_number"]
+    list_filter = ["manuscript", ("canvas_id", admin.EmptyFieldListFilter)]
     search_fields = [
         "folio_number",
         "manuscript__siglum",
         "line_code_range_start",
         "line_code_range_end",
+        "canvas_label",
     ]
 
-    readonly_fields = ["stanza_list", "line_range_display", "stanza_count"]
+    readonly_fields = [
+        "stanza_list",
+        "line_range_display",
+        "stanza_count",
+        "linked_image",
+        "canvas_index",
+        "canvas_label",
+        "image_id",
+        "toponym_list",
+    ]
 
     fieldsets = (
         ("Folio Information", {"fields": ("manuscript", "folio_number")}),
+        (
+            "IIIF Canvas",
+            {
+                # the linked image shows the canvas position, counting from 1
+                "fields": ("linked_image", "canvas_id", "canvas_label", "image_id"),
+            },
+        ),
         (
             "Line Range",
             {
@@ -313,14 +523,70 @@ class FolioAdmin(ImportExportModelAdmin):
                 "fields": ("stanza_count", "stanza_list"),
             },
         ),
+        ("Toponyms", {"fields": ("toponym_list",)}),
+        ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
     )
+
+    @admin.display(description="Linked image")
+    def linked_image(self, obj):
+        if not obj.pk or not obj.manuscript_id:
+            return "-"
+        return linked_image_link(obj, thumbnail=True)
+
+    @admin.display(description="Toponym aliases on this folio")
+    def toponym_list(self, obj):
+        if not obj.pk:
+            return "-"
+        aliases = obj.locationalias_set.select_related("location").order_by(
+            "placename_alias", "id"
+        )
+        if not aliases:
+            return "None"
+        rows = []
+        for alias in aliases:
+            if alias.location:
+                location = alias.location
+                name = location.name or location.placename_modern or ""
+                toponym = format_html(
+                    '<a href="{}">{}</a> {}',
+                    reverse("admin:manuscript_location_change", args=[location.pk]),
+                    name or location.placename_id,
+                    f"({location.placename_id})" if name else "",
+                )
+            else:
+                toponym = "-"
+            rows.append(
+                (
+                    reverse("admin:manuscript_locationalias_change", args=[alias.pk]),
+                    alias.placename_alias or f"Alias {alias.pk}",
+                    toponym,
+                )
+            )
+        return format_html(
+            '<div style="max-height: 400px; overflow-y: auto;">'
+            '<table style="width: 100%;"><tr><th>Alias</th><th>Toponym</th></tr>'
+            "{}</table></div>",
+            format_html_join(
+                "", '<tr><td><a href="{}">{}</a></td><td>{}</td></tr>', rows
+            ),
+        )
 
     def stanza_count(self, obj):
         return obj.stanzas.count()
 
     stanza_count.short_description = "Number of Stanzas"
 
+    @admin.display(
+        description="Folio",
+        ordering=Concat("manuscript__siglum", Value(" "), "folio_number"),
+    )
+    def folio_display(self, obj):
+        manuscript = obj.manuscript or "No manuscript"
+        return f"{manuscript} · {obj.folio_number or '(no folio number)'}"
+
     def line_range_display(self, obj):
+        if not obj.line_code_range_start:
+            return "-"
         end = obj.line_code_range_end or "End"
         return f"{obj.line_code_range_start} → {end}"
 

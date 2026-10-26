@@ -26,6 +26,10 @@ const TifySync = {
       }
     }
     
+    // Open the viewer on the reader's current folio rather than on the
+    // manifest's first page
+    const initialPage = this.initialPage();
+
     // Initialize Tify viewer
     this.viewer = new Tify({
       container: `#${containerId}`,
@@ -34,6 +38,7 @@ const TifySync = {
       view: '', // Default to scan view
       optionsResetOnPageChange: ['pan'],
       urlQueryKey: null, // Disable URL parameter changes to avoid conflicts
+      ...(initialPage ? { pages: [initialPage] } : {}),
     });
 
     this.viewer.ready.then(() => {
@@ -50,6 +55,32 @@ const TifySync = {
     return true;
   },
   
+  // The viewer page for the folio the reader is at: the last folio divider
+  // above the lower edge of the band the scroll observer watches (20-40% from
+  // the top of the window). Null if there's none or it has no matching image.
+  initialPage() {
+    if (!this.manifestData) {
+      return null;
+    }
+    const bandBottom = window.innerHeight * 0.4;
+    let divider = null;
+    for (const candidate of document.querySelectorAll('.folio-divider')) {
+      if (candidate.getBoundingClientRect().top > bandBottom) {
+        break;
+      }
+      divider = candidate;
+    }
+    if (!divider) {
+      return null;
+    }
+    const index = this.findCanvasIndex(
+      this.getCanvases(this.manifestData),
+      divider.dataset.folioNumber,
+      divider.dataset.canvasId || null,
+    );
+    return index === -1 ? null : index + 1;
+  },
+
   setupEventListeners() {
     // Listen for custom events from Tify
     // Note: Tify might emit certain events when page changes
@@ -67,76 +98,111 @@ const TifySync = {
     }, 1000);
   },
   
-  navigateToFolio(folioNumber, retryCount = 0) {
+  navigateToFolio(folioNumber, canvasId = null, retryCount = 0) {
     if (!this.viewerReady && retryCount < 5) {
       console.log(`Viewer not ready for ${folioNumber}, retrying... (${retryCount + 1})`);
-      setTimeout(() => this.navigateToFolio(folioNumber, retryCount + 1), 1000);
+      setTimeout(() => this.navigateToFolio(folioNumber, canvasId, retryCount + 1), 1000);
       return;
     }
 
-    if (!this.viewer || !this.manifestUrl || !folioNumber) {
+    if (!this.viewer || !this.manifestUrl || !(folioNumber || canvasId)) {
       console.log('Cannot navigate: missing required data', {
         hasViewer: !!this.viewer,
         manifestUrl: this.manifestUrl,
-        folioNumber
+        folioNumber,
+        canvasId
       });
       return;
     }
 
     try {
-      console.log('Attempting to navigate to folio:', folioNumber);
-      
-      // Determine page number based on folio - this might require fetching
-      // the manifest data and searching for the folio in labels
-      this.fetchManifestAndNavigate(folioNumber);
+      console.log('Attempting to navigate to folio:', folioNumber, canvasId);
+      this.fetchManifestAndNavigate(folioNumber, canvasId);
     } catch (error) {
       console.error('Error navigating to folio:', error);
     }
   },
-  
-  async fetchManifestAndNavigate(folioNumber) {
+
+  // Canvases from either a IIIF v2 or v3 manifest
+  getCanvases(manifest) {
+    if (manifest.sequences) {
+      return manifest.sequences[0].canvases || [];
+    }
+    return manifest.items || [];
+  },
+
+  // Flatten a IIIF v2 or v3 label into a plain string
+  labelToString(label) {
+    if (!label) return '';
+    if (typeof label === 'string') return label;
+    if (Array.isArray(label)) return label.map(l => this.labelToString(l)).join(' ');
+    if (label['@value']) return label['@value'];
+    return Object.values(label).map(l => this.labelToString(l)).join(' ');
+  },
+
+  findCanvasIndex(canvases, folioNumber, canvasId) {
+    // Folios linked to a canvas are matched by canvas ID
+    if (canvasId) {
+      const index = canvases.findIndex(canvas => (canvas['@id'] || canvas.id) === canvasId);
+      if (index !== -1) {
+        return index;
+      }
+      console.warn('Linked canvas not found in manifest:', canvasId);
+    }
+    if (!folioNumber) {
+      return -1;
+    }
+
+    // Legacy fallback for folios not yet linked to a canvas: match the
+    // folio number against canvas labels and metadata
+    const folioPatterns = [
+      new RegExp(`f.?${folioNumber}[rv]?`, 'i'),  // f12v, f.12v, f12r
+      new RegExp(`${folioNumber}[rv]?`, 'i'),      // 12v, 12r
+      new RegExp(`folio.?${folioNumber}`, 'i')     // folio 12, folio.12
+    ];
+
+    return canvases.findIndex(canvas =>
+      folioPatterns.some(pattern => {
+        const matchesLabel = pattern.test(this.labelToString(canvas.label));
+        const matchesMetadata = canvas.metadata && 
+          canvas.metadata.some(m => pattern.test(this.labelToString(m.value)));
+        
+        if (matchesLabel || matchesMetadata) {
+          console.log('Found match:', {
+            pattern: pattern.toString(),
+            label: canvas.label,
+            metadata: canvas.metadata
+          });
+        }
+        
+        return matchesLabel || matchesMetadata;
+      })
+    );
+  },
+
+  async fetchManifestAndNavigate(folioNumber, canvasId = null) {
     try {
       if (!this.manifestData) {
         const response = await fetch(this.manifestUrl);
         this.manifestData = await response.json();
       }
-      const manifest = this.manifestData;
-
-      // Extract the canvases
-      const canvases = manifest.sequences[0].canvases;
+      const canvases = this.getCanvases(this.manifestData);
       console.log('Found manifest with', canvases.length, 'canvases');
-      
-      // Try different patterns for matching folio numbers
-      const folioPatterns = [
-        new RegExp(`f.?${folioNumber}[rv]?`, 'i'),  // f12v, f.12v, f12r
-        new RegExp(`${folioNumber}[rv]?`, 'i'),      // 12v, 12r
-        new RegExp(`folio.?${folioNumber}`, 'i')     // folio 12, folio.12
-      ];
 
-      // Try to find matching canvas
-      const pageIndex = canvases.findIndex(canvas => 
-        folioPatterns.some(pattern => {
-          const matchesLabel = pattern.test(canvas.label);
-          const matchesMetadata = canvas.metadata && 
-            canvas.metadata.some(m => pattern.test(m.value));
-          
-          if (matchesLabel || matchesMetadata) {
-            console.log('Found match:', {
-              pattern: pattern.toString(),
-              label: canvas.label,
-              metadata: canvas.metadata
-            });
-          }
-          
-          return matchesLabel || matchesMetadata;
-        })
-      );
+      const pageIndex = this.findCanvasIndex(canvases, folioNumber, canvasId);
 
       if (pageIndex !== -1) {
         console.log('Found matching canvas at index:', pageIndex);
         
         // Tify uses 1-based page numbers
         const tifyPageNumber = pageIndex + 1;
+
+        // Don't reopen the page the viewer is already showing
+        const currentPages = this.viewer && this.viewer.options && this.viewer.options.pages;
+        if (currentPages && currentPages.length === 1 && currentPages[0] === tifyPageNumber) {
+          console.log('Viewer is already on page', tifyPageNumber);
+          return;
+        }
         
         // Navigate to the page using Tify's API
         // If Tify provides a direct method to go to a page:
@@ -154,7 +220,7 @@ const TifySync = {
           });
         }
       } else {
-        console.log('No matching canvas found for folio:', folioNumber);
+        console.log('No matching canvas found for folio:', folioNumber, canvasId);
       }
     } catch (error) {
       console.error('Error fetching manifest or navigating:', error);
@@ -187,11 +253,12 @@ const TifySync = {
       entries.forEach(entry => {
         const folioElement = entry.target;
         const folioNumber = folioElement.dataset.folioNumber;
+        const canvasId = folioElement.dataset.canvasId || null;
         
         if (entry.isIntersecting) {
           console.log('Folio entered viewport:', folioNumber, 'Intersection ratio:', entry.intersectionRatio);
           folioElement.style.backgroundColor = '#f0f9ff';
-          handleFolioChange(folioNumber);
+          handleFolioChange(folioNumber, canvasId);
         } else {
           folioElement.style.backgroundColor = '';
         }
@@ -237,8 +304,8 @@ document.addEventListener('alpine:init', () => {
         console.log('Tify viewer initialized');
         
         // Set up the observer after Alpine and Tify are initialized
-        TifySync.setupIntersectionObserver((folioNumber) => {
-          this.handleFolioChange(folioNumber);
+        TifySync.setupIntersectionObserver((folioNumber, canvasId) => {
+          this.handleFolioChange(folioNumber, canvasId);
         });
 
         TifySync.viewer.ready.then(() => {
@@ -246,20 +313,21 @@ document.addEventListener('alpine:init', () => {
           const dividers = Array.from(
             document.querySelectorAll('.folio-divider'),
           );
-          let activeFolio = null;
+          let activeDivider = null;
           // get the last divider that is ABOVE the top 15% of screen
           const readingLine = window.innerHeight * 0.15;
           for (let i = 0; i < dividers.length; i++) {
             const rect = dividers[i].getBoundingClientRect();
             if (rect.top <= readingLine) {
-              activeFolio = dividers[i].dataset.folioNumber;
+              activeDivider = dividers[i];
             } else {
               break;
             }
           }
-          if (activeFolio) {
-            console.log('Initial jump to folio:', activeFolio);
-            this.handleFolioChange(activeFolio, true);
+          if (activeDivider) {
+            const { folioNumber, canvasId } = activeDivider.dataset;
+            console.log('Initial jump to folio:', folioNumber);
+            this.handleFolioChange(folioNumber, canvasId || null, true);
           } else {
             console.log(
               'No folio divider found above the current scroll position.',
@@ -269,14 +337,16 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    handleFolioChange(folioNumber, force = false) {
-      if (!force && this.currentFolio === folioNumber) {
+    handleFolioChange(folioNumber, canvasId = null, force = false) {
+      // folio numbers are not always unique, so prefer the canvas ID as the key
+      const folioKey = canvasId || folioNumber;
+      if (!force && this.currentFolio === folioKey) {
         return;
       }
-      console.log('Handling folio change:', folioNumber);
-      this.currentFolio = folioNumber;
+      console.log('Handling folio change:', folioNumber, canvasId);
+      this.currentFolio = folioKey;
       if (this.viewerInitialized) {
-        TifySync.navigateToFolio(folioNumber);
+        TifySync.navigateToFolio(folioNumber, canvasId);
       } else {
         console.log('Viewer not yet initialized');
       }
@@ -289,11 +359,12 @@ function navigateToFolio(event, element) {
   event.preventDefault();
   
   // Extract folio number from the data attribute or from parent folio-divider
-  const folioNumber = element.dataset.folio || 
-                      element.closest('.folio-divider')?.dataset.folioNumber;
+  const divider = element.closest('.folio-divider');
+  const folioNumber = element.dataset.folio || divider?.dataset.folioNumber;
+  const canvasId = element.dataset.canvasId || divider?.dataset.canvasId || null;
   
-  if (folioNumber) {
-    console.log('Navigating to folio:', folioNumber);
-    TifySync.navigateToFolio(folioNumber);
+  if (folioNumber || canvasId) {
+    console.log('Navigating to folio:', folioNumber, canvasId);
+    TifySync.navigateToFolio(folioNumber, canvasId);
   }
 }

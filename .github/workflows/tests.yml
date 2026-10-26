@@ -1,0 +1,71 @@
+name: "Tests"
+
+on:
+  pull_request:
+  # Heroku's automatic deploys wait for these checks on the merged commit
+  push:
+    branches:
+      - "develop"
+      - "main"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # matches docker-compose.yml
+        image: postgres:16
+        env:
+          POSTGRES_DB: lasfera
+          POSTGRES_USER: lasfera
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lasfera"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_READ_DOT_ENV_FILE: "false"
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: lasfera
+      DB_USER: lasfera
+      DB_PASS: password
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # psycopg2 is built from source and needs the PostgreSQL client headers
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y libpq-dev
+
+      # Poetry has to be installed before setup-python can cache its virtualenv
+      - name: Install Poetry
+        run: pipx install poetry==2.2.1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Check for missing migrations
+        run: poetry run python manage.py makemigrations --check --dry-run
+
+      - name: Run tests
+        run: poetry run python manage.py test --noinput

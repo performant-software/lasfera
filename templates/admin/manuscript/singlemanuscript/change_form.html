@@ -1,0 +1,8 @@
+{% extends "admin/import_export/change_form.html" %}
+
+{% block object-tools-items %}
+  {% if original.pk and original.iiif_url %}
+    <li><a href="{% url 'admin:manuscript_singlemanuscript_canvases' original.pk %}">Link IIIF canvases</a></li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

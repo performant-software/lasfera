@@ -53,6 +53,27 @@ def get_annotation_map(model_class, stanzas, ct_id, note_type, manuscript=None):
     return mapping
 
 
+def split_at_folio_breaks(original_lines, translated_lines):
+    """Split a stanza into segments where the folio changes mid-stanza, so each
+    break can be shown across both columns. Each segment has its original and
+    translated lines and the folio starting there (None for the first). The
+    translation is split at the same line code, or the first line after it."""
+    segments = [{"original": [], "translated": [], "folio_break": None}]
+    break_codes = []
+    for line in original_lines:
+        if line.get("folio_break"):
+            segments.append(
+                {"original": [], "translated": [], "folio_break": line["folio_break"]}
+            )
+            break_codes.append(line_code_to_numeric(line["stanza_line_code_starts"]))
+        segments[-1]["original"].append(line)
+    for line in translated_lines:
+        code = line_code_to_numeric(line["stanza_line_code_starts"])
+        index = sum(1 for break_code in break_codes if code and code >= break_code)
+        segments[index]["translated"].append(line)
+    return segments
+
+
 def manuscript_stanzas(request, siglum):
     # Get the requested manuscript
     manuscript = get_object_or_404(SingleManuscript, siglum=siglum)
@@ -121,8 +142,13 @@ def manuscript_stanzas(request, siglum):
     line_code_to_folio = {}
 
     if folios.exists():
-        # Try to build a map of line codes to folios
-        for folio in folios:
+        # Try to build a map of line codes to folios. Apply ranges in reading
+        # order so where one folio's range ends on the line the next starts
+        # on, that line goes to the later folio.
+        for folio in sorted(
+            folios,
+            key=lambda f: line_code_to_numeric(f.line_code_range_start) or 0,
+        ):
             if folio.line_code_range_start and folio.line_code_range_end:
                 try:
                     start_code = line_code_to_numeric(folio.line_code_range_start)
@@ -185,29 +211,40 @@ def manuscript_stanzas(request, siglum):
                 "translated": translated_stanza_group,
             }
 
-            # If we have a folio mapping, try to add folio information
+            # If we have a folio mapping, mark where the folio changes. A
+            # change at the stanza's first verse line is shown between stanzas;
+            # a change further in is marked on the line where the folio starts.
             if has_folio_mapping and original_stanzas:
-                first_stanza = original_stanzas[0]
-                if first_stanza["stanza_line_code_starts"]:
-                    try:
-                        stanza_code = line_code_to_numeric(
-                            first_stanza["stanza_line_code_starts"]
+                at_stanza_start = True
+                keep_stanza_divider = False
+                for line in original_stanzas:
+                    line_code = line["stanza_line_code_starts"]
+                    numeric_code = line_code_to_numeric(line_code)
+                    matching_folio = line_code_to_folio.get(numeric_code)
+                    if matching_folio is not None and matching_folio != current_folio:
+                        current_folio = matching_folio
+                        if at_stanza_start and not keep_stanza_divider:
+                            stanza_group["new_folio"] = True
+                            stanza_group["current_folio"] = current_folio
+                            # Only a folio whose range begins at the stanza
+                            # number keeps the divider if another folio starts
+                            # at the first verse line
+                            keep_stanza_divider = numeric_code == line_code_to_numeric(
+                                current_folio.line_code_range_start
+                            )
+                        else:
+                            line["folio_break"] = current_folio
+                        logger.info(
+                            f"New folio at line {line_code}: {current_folio.folio_number}"
                         )
-                        if stanza_code in line_code_to_folio:
-                            matching_folio = line_code_to_folio[stanza_code]
+                    # .00 lines are stanza numbers, not manuscript text, so the
+                    # stanza starts at its first verse line
+                    if not line_code.endswith(".00"):
+                        at_stanza_start = False
 
-                            # If this is a new folio, mark it in the stanza group
-                            if current_folio is None or matching_folio != current_folio:
-                                current_folio = matching_folio
-                                stanza_group["new_folio"] = True
-                                stanza_group["current_folio"] = current_folio
-                                logger.info(
-                                    f"New folio for stanza {stanza_number}: {current_folio.folio_number}"
-                                )
-                    except Exception as e:
-                        logger.warning(
-                            f"Error determining folio for stanza {first_stanza.id}: {e}"
-                        )
+            stanza_group["segments"] = split_at_folio_breaks(
+                original_stanzas, translated_stanza_group or []
+            )
 
             # Add the stanza group to the book
             paired_books[book_number].append(stanza_group)
@@ -516,12 +553,18 @@ def manuscripts(request: HttpRequest):
 
     # optimization: use values() and list
     manuscripts = list(
-        SingleManuscript.objects.values("id", "shelfmark", "siglum", "library")
+        SingleManuscript.objects.annotate(
+            has_variants=Exists(
+                TextualVariant.objects.filter(manuscript=OuterRef("pk"))
+            )
+        ).values("id", "shelfmark", "siglum", "library", "iiif_url", "has_variants")
     )
     libraries = Library.objects.values("id", "city", "library")
     library_id_map = {library["id"]: library for library in libraries}
 
     for manuscript in manuscripts:
+        # "with images" means a IIIF manifest is available to view page images
+        manuscript["has_images"] = bool(manuscript["iiif_url"])
         library_id = manuscript["library"]
         library = library_id_map.get(library_id)
         if library:
@@ -539,14 +582,22 @@ def manuscripts(request: HttpRequest):
                 manuscript["shelfmark"] or "no shelfmark",
                 manuscript["siglum"] or "no siglum",
             )
-    sigla = [manuscript["siglum"] for manuscript in manuscripts if manuscript["siglum"]]
+    sigla = [
+        {
+            "siglum": manuscript["siglum"],
+            "has_images": manuscript["has_images"],
+            "has_variants": manuscript["has_variants"],
+        }
+        for manuscript in manuscripts
+        if manuscript["siglum"]
+    ]
 
     return render(
         request,
         "manuscripts.html",
         {
             "manuscripts": sorted(manuscripts, key=lambda m: m["shelfmark_fmt"]),
-            "sigla_index": sorted(sigla),
+            "sigla_index": sorted(sigla, key=lambda s: s["siglum"]),
             "snippet": ManuscriptsIntroduction.objects.first(),
         },
     )
