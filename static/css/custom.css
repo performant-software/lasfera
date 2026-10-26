@@ -177,3 +177,9 @@ note[data-notation] {
 .prose {
   max-width: max(65ch, 75%);
 }
+
+/* let a prose block opt out of the width limit above with Tailwind's
+   max-w-none (e.g. the manuscripts page introduction) */
+.prose.max-w-none {
+  max-width: none;
+}

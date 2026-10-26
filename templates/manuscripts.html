@@ -11,7 +11,10 @@
       <h3 class="text-4xl mb-8 font-bold" id="top">
         {{ snippet.title|default:"Manuscripts" }}
       </h3>
-      <div class="prose mb-8">
+      <!-- max-w-none lets the introduction use the page's full width like the
+           lists below; flow-root keeps images floated in the CMS text from
+           overlapping the filters -->
+      <div class="prose max-w-none mb-8 flow-root">
         {% if snippet.body %}
           {{ snippet.body|richtext }}
         {% else %}
