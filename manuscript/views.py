@@ -20,6 +20,7 @@ from django.views.generic import DetailView
 from rest_framework import viewsets
 
 from gallery.models import GalleryIndexPage
+from manuscript.manuscript_cloud import build_cloud_places
 from manuscript.models import (
     Library,
     Location,
@@ -29,7 +30,6 @@ from manuscript.models import (
     StanzaTranslated,
     line_code_to_numeric,
 )
-   from manuscript.manuscript_cloud import build_cloud_places
 from manuscript.serializers import SingleManuscriptSerializer, ToponymSerializer
 from pages.models import AboutPage, ManuscriptsIntroduction, SitePage
 from textannotation.models import CrossReference, EditorialNote, TextualVariant
@@ -600,7 +600,7 @@ def manuscripts(request: HttpRequest):
             "manuscripts": sorted(manuscripts, key=lambda m: m["shelfmark_fmt"]),
             "sigla_index": sorted(sigla, key=lambda s: s["siglum"]),
             "snippet": ManuscriptsIntroduction.objects.first(),
-                           "cloud_places": build_cloud_places(manuscripts, library_id_map),
+            "cloud_places": build_cloud_places(manuscripts, library_id_map),
         },
     )
 

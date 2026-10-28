@@ -93,7 +93,9 @@ def build_cloud_places(manuscripts, library_id_map):
             label, country, lat, lon = coords
         else:
             if key not in UNLOCATED:
-                logger.info("Manuscript cloud: no coordinates for city %r", library.get("city"))
+                logger.info(
+                    "Manuscript cloud: no coordinates for city %r", library.get("city")
+                )
             label, country, lat, lon = "Location not mapped", "", None, None
         place = places.setdefault(
             label,
