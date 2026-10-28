@@ -31,12 +31,13 @@
     p.count = p.inst.reduce((s, x) => s + x.mss.length, 0);
   });
   const located = PLACES.filter((p) => p.lat != null);
-  const MAXC = Math.max(2, d3.max(PLACES, (p) => p.count));
+  // Size only by the cities on the cloud; the "not mapped" group isn't drawn
+  const MAXC = Math.max(2, d3.max(located, (p) => p.count) || 0);
   let selected = located.slice().sort((a, b) => b.count - a.count)[0] || PLACES[0];
 
   const summary = root.querySelector(".ms-cloud__summary");
   if (summary) {
-    const total = PLACES.reduce((s, p) => s + p.count, 0);
+    const total = located.reduce((s, p) => s + p.count, 0);
     summary.textContent = `${total} manuscripts in ${located.length} cities. Select a city to list its manuscripts.`;
   }
 
@@ -200,7 +201,10 @@
     render();
   }
 
-  let lastW = 0, lastH = 0;
+  // Start from the current size so the observer's first callback doesn't
+  // repeat the initial layout below
+  const r0 = frame.getBoundingClientRect();
+  let lastW = r0.width, lastH = r0.height;
   new ResizeObserver(() => {
     const r = frame.getBoundingClientRect();
     if (Math.abs(r.width - lastW) < 1 && Math.abs(r.height - lastH) < 1) return;
