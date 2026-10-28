@@ -26,6 +26,7 @@
         {% endif %}
       </div>
 
+               {% include "partials/manuscript_cloud.html" %}
       <!-- Filters -->
       <div class="bg-gray-50 p-4 rounded-lg mb-8 flex flex-wrap gap-x-8 gap-y-2">
         <span class="font-semibold text-gray-700">Filter:</span>
@@ -71,6 +72,13 @@
   </div>
 {% endblock content %}
 
-{% block scripts %}
-{% endblock scripts %}
+   {% block extra_css %}
+     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600&display=swap">
+     <link rel="stylesheet" href="{% static 'css/manuscript-cloud.css' %}">
+   {% endblock extra_css %}
+
+   {% block scripts %}
+     <script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
+     <script src="{% static 'js/manuscript-cloud.js' %}"></script>
+   {% endblock scripts %}
 
