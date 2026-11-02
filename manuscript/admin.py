@@ -77,10 +77,6 @@ def folio_toponym_count(folio):
     return folio.locationalias_set.count() if count is None else count
 
 
-def toponyms_phrase(count):
-    return f"{count} toponym{'' if count == 1 else 's'}"
-
-
 def folio_number_taken(folio, manuscript, number):
     """Whether another folio of the manuscript has this number, ignoring
     differences like "f. 12r" and "12r\""""
@@ -126,22 +122,18 @@ class FolioAdminForm(forms.ModelForm):
     class Meta:
         model = Folio
         fields = "__all__"
+        help_texts = {
+            "folio_number": "The folio's number in the manuscript, e.g. 12r, as "
+            "shown to readers.",
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        toponyms = folio_toponym_count(self.instance)
-        if "folio_number" in self.fields:
-            if toponyms:
-                self.fields["folio_number"].help_text = (
-                    f"This folio has {toponyms_phrase(toponyms)}. Toponyms stay "
-                    "with this record if its number changes. Only change the "
-                    "number to correct it; to record a different folio, add a "
-                    "new one."
-                )
-            if not self.instance.pk:
+        if not self.instance.pk:
+            if "folio_number" in self.fields:
                 self.fields["folio_number"].required = True
-        if "manuscript" in self.fields and not self.instance.pk:
-            self.fields["manuscript"].required = True
+            if "manuscript" in self.fields:
+                self.fields["manuscript"].required = True
 
     def clean(self):
         cleaned_data = super().clean()
@@ -194,11 +186,8 @@ class FolioInlineForm(forms.ModelForm):
         model = Folio
         fields = ("folio_number", "line_code_range_start", "line_code_range_end")
         help_texts = {
-            "folio_number": (
-                "Locked on folios with toponyms, which stay with the record if "
-                "its number changes. To correct one, open it with its Change "
-                "link. To record a different folio, use Add another Folio."
-            ),
+            "folio_number": "Numbers of folios with toponyms are changed on the "
+            "folio's own page.",
         }
 
     def __init__(self, *args, **kwargs):

@@ -943,17 +943,15 @@ class FolioRenameAndAddTest(TestCase):
             queryset=Folio.objects.order_by("pk"),
         )
 
-    def test_folio_page_warns_about_toponyms(self):
-        response = self.client.get(
-            reverse("admin:manuscript_folio_change", args=[self.with_toponyms.pk])
-        )
-        self.assertContains(response, "This folio has 1 toponym.")
-
-    def test_no_warning_without_toponyms(self):
-        response = self.client.get(
-            reverse("admin:manuscript_folio_change", args=[self.without_toponyms.pk])
-        )
-        self.assertNotContains(response, "This folio has")
+    def test_folio_number_help_text_is_the_same_on_every_folio(self):
+        for folio in (self.with_toponyms, self.without_toponyms):
+            response = self.client.get(
+                reverse("admin:manuscript_folio_change", args=[folio.pk])
+            )
+            self.assertContains(response, "as shown to readers")
+            self.assertNotContains(response, "This folio has")
+        response = self.client.get(reverse("admin:manuscript_folio_add"))
+        self.assertContains(response, "as shown to readers")
 
     def test_renaming_with_toponyms_lists_them_to_confirm(self):
         response = self.save_folio(self.with_toponyms, "3r")
