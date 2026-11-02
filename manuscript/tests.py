@@ -7,9 +7,11 @@ from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import IntegrityError
+from django.forms import inlineformset_factory
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
+from manuscript.admin import FolioInlineForm, FolioInlineFormSet
 from manuscript.canvas_linking import clean_canvas_rows, link_canvases
 from manuscript.models import (
     Folio,
@@ -411,7 +413,8 @@ class LinkCanvasesViewTest(TestCase):
         )
         self.assertNotContains(response, 'name="folio_set-0-canvas_id"')
         self.assertNotContains(response, 'name="folio_set-0-DELETE"')
-        self.assertNotContains(response, 'name="folio_set-__prefix__-folio_number"')
+        # the empty row behind "Add another Folio"
+        self.assertContains(response, 'name="folio_set-__prefix__-folio_number"')
 
     def test_folio_page_shows_image_and_toponyms(self):
         folio = Folio.objects.create(
@@ -885,3 +888,215 @@ class RepairFolioToponymsTest(TestCase):
 
         self.assertIn("2 records are numbered 13v", out)
         self.assertEqual(self.renamed.locationalias_set.count(), 2)
+
+
+class FolioRenameAndAddTest(TestCase):
+    def setUp(self):
+        self.manuscript = SingleManuscript.objects.create(item_id=1, siglum="Test1")
+        self.location = Location.objects.create(placename_id="T001", name="Tana")
+        self.with_toponyms = Folio.objects.create(
+            manuscript=self.manuscript, folio_number="13v"
+        )
+        LocationAlias.objects.create(
+            placename_alias="Asia",
+            location=self.location,
+            manuscript=self.manuscript,
+            folio=self.with_toponyms,
+        )
+        self.without_toponyms = Folio.objects.create(
+            manuscript=self.manuscript, folio_number="14r"
+        )
+        self.client.force_login(
+            User.objects.create_superuser("admin", "admin@example.org", "pw")
+        )
+
+    def save_folio(self, folio, number, **extra):
+        return self.client.post(
+            reverse("admin:manuscript_folio_change", args=[folio.pk]),
+            {"manuscript": self.manuscript.pk, "folio_number": number, **extra},
+        )
+
+    def inline_formset(self, rows):
+        """Formset as on the manuscript page; rows are (folio or None, number)"""
+        data = {
+            "folio_set-TOTAL_FORMS": len(rows),
+            "folio_set-INITIAL_FORMS": sum(1 for folio, _ in rows if folio),
+            "folio_set-MIN_NUM_FORMS": 0,
+            "folio_set-MAX_NUM_FORMS": 1000,
+        }
+        for i, (folio, number) in enumerate(rows):
+            data[f"folio_set-{i}-folio_number"] = number
+            if folio:
+                data[f"folio_set-{i}-id"] = folio.pk
+        factory = inlineformset_factory(
+            SingleManuscript,
+            Folio,
+            form=FolioInlineForm,
+            formset=FolioInlineFormSet,
+            can_delete=False,
+            extra=0,
+        )
+        return factory(
+            data,
+            instance=self.manuscript,
+            queryset=Folio.objects.order_by("pk"),
+        )
+
+    def test_folio_page_warns_about_toponyms(self):
+        response = self.client.get(
+            reverse("admin:manuscript_folio_change", args=[self.with_toponyms.pk])
+        )
+        self.assertContains(response, "This folio has 1 toponym,")
+        self.assertContains(response, 'name="confirm_rename"')
+
+    def test_no_warning_without_toponyms(self):
+        response = self.client.get(
+            reverse("admin:manuscript_folio_change", args=[self.without_toponyms.pk])
+        )
+        self.assertNotContains(response, 'name="confirm_rename"')
+
+    def test_renaming_with_toponyms_needs_confirming(self):
+        response = self.save_folio(self.with_toponyms, "3r")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "would move to")
+        self.assertContains(response, f"?manuscript={self.manuscript.pk}")
+        self.with_toponyms.refresh_from_db()
+        self.assertEqual(self.with_toponyms.folio_number, "13v")
+
+    def test_confirmed_rename_keeps_toponyms(self):
+        response = self.save_folio(self.with_toponyms, "13r", confirm_rename="on")
+
+        self.assertEqual(response.status_code, 302)
+        self.with_toponyms.refresh_from_db()
+        self.assertEqual(self.with_toponyms.folio_number, "13r")
+        self.assertEqual(self.with_toponyms.locationalias_set.count(), 1)
+
+    def test_saving_without_renaming_needs_no_confirmation(self):
+        response = self.save_folio(
+            self.with_toponyms, "13v", line_code_range_start="01.01.00"
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.with_toponyms.refresh_from_db()
+        self.assertEqual(self.with_toponyms.line_code_range_start, "01.01.00")
+
+    def test_renaming_without_toponyms_needs_no_confirmation(self):
+        response = self.save_folio(self.without_toponyms, "14v")
+
+        self.assertEqual(response.status_code, 302)
+        self.without_toponyms.refresh_from_db()
+        self.assertEqual(self.without_toponyms.folio_number, "14v")
+
+    def test_cant_rename_onto_an_existing_number(self):
+        response = self.save_folio(self.without_toponyms, "f. 13v")
+
+        self.assertContains(response, "already has a folio numbered")
+        self.without_toponyms.refresh_from_db()
+        self.assertEqual(self.without_toponyms.folio_number, "14r")
+
+    def test_add_folio_page(self):
+        add_url = reverse("admin:manuscript_folio_add")
+
+        self.assertContains(
+            self.client.get(reverse("admin:manuscript_folio_changelist")), add_url
+        )
+        response = self.client.get(add_url, {"manuscript": self.manuscript.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["adminform"].form.initial["manuscript"],
+            str(self.manuscript.pk),
+        )
+        self.assertNotContains(response, 'name="confirm_rename"')
+
+        response = self.client.post(
+            add_url,
+            {
+                "manuscript": self.manuscript.pk,
+                "folio_number": "3r",
+                "line_code_range_start": "01.01.00",
+                "line_code_range_end": "01.03.08",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        folio = Folio.objects.get(manuscript=self.manuscript, folio_number="3r")
+        self.assertEqual(folio.line_code_range_end, "01.03.08")
+
+    def test_add_folio_needs_number_and_manuscript_and_a_new_number(self):
+        add_url = reverse("admin:manuscript_folio_add")
+        count = Folio.objects.count()
+
+        for data, message in [
+            ({"manuscript": self.manuscript.pk}, "This field is required"),
+            ({"folio_number": "3r"}, "This field is required"),
+            (
+                {"manuscript": self.manuscript.pk, "folio_number": "13v"},
+                "already has a folio numbered",
+            ),
+        ]:
+            self.assertContains(self.client.post(add_url, data), message)
+        self.assertEqual(Folio.objects.count(), count)
+
+    def test_manuscript_page_locks_numbers_of_folios_with_toponyms(self):
+        response = self.client.get(
+            reverse(
+                "admin:manuscript_singlemanuscript_change", args=[self.manuscript.pk]
+            )
+        )
+        formset = next(
+            f.formset
+            for f in response.context["inline_admin_formsets"]
+            if f.formset.prefix == "folio_set"
+        )
+        locked = {
+            form.instance.folio_number: form.fields["folio_number"].disabled
+            for form in formset.initial_forms
+        }
+        self.assertEqual(locked, {"13v": True, "14r": False})
+
+    def test_table_ignores_a_rename_of_a_folio_with_toponyms(self):
+        formset = self.inline_formset(
+            [(self.with_toponyms, "3r"), (self.without_toponyms, "14r")]
+        )
+        self.assertTrue(formset.is_valid(), formset.errors)
+        formset.save()
+
+        self.with_toponyms.refresh_from_db()
+        self.assertEqual(self.with_toponyms.folio_number, "13v")
+
+    def test_table_adds_a_folio(self):
+        formset = self.inline_formset(
+            [
+                (self.with_toponyms, "13v"),
+                (self.without_toponyms, "14r"),
+                (None, "3r"),
+            ]
+        )
+        self.assertTrue(formset.is_valid(), formset.errors)
+        formset.save()
+
+        self.assertTrue(
+            Folio.objects.filter(manuscript=self.manuscript, folio_number="3r").exists()
+        )
+
+    def test_table_rejects_repeated_numbers(self):
+        existing = self.inline_formset(
+            [
+                (self.with_toponyms, "13v"),
+                (self.without_toponyms, "14r"),
+                (None, "f. 13v"),
+            ]
+        )
+        self.assertFalse(existing.is_valid())
+        self.assertIn("already has a folio numbered", str(existing.errors))
+
+        repeated = self.inline_formset(
+            [
+                (self.with_toponyms, "13v"),
+                (self.without_toponyms, "14r"),
+                (None, "3r"),
+                (None, "3r"),
+            ]
+        )
+        self.assertFalse(repeated.is_valid())
+        self.assertIn("entered more than once", str(repeated.errors))
