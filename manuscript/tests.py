@@ -784,3 +784,104 @@ class StanzaFolioDividerTest(TestCase):
 
         self.assertEqual(self.stanza_dividers(response), [("01.01.00", "1v")])
         self.assertEqual(self.line_breaks(response), [("01.01.01", "2r")])
+
+
+class RepairFolioToponymsTest(TestCase):
+    def setUp(self):
+        self.manuscript = SingleManuscript.objects.create(item_id=1, siglum="Test1")
+        self.location = Location.objects.create(placename_id="T001", name="Tana")
+        self.renamed = Folio.objects.create(
+            manuscript=self.manuscript,
+            folio_number="3r",
+            line_code_range_start="01.01.00",
+            line_code_range_end="01.03.08",
+            canvas_id="https://example.org/canvas/9",
+        )
+        for name in ["Asia", "Africa"]:
+            LocationAlias.objects.create(
+                placename_alias=name,
+                location=self.location,
+                manuscript=self.manuscript,
+                folio=self.renamed,
+            )
+
+    def run_command(self, *args, original="13v", expected=2, current="3r"):
+        repairs = [("Test1", self.renamed.pk, current, original, expected)]
+        out = StringIO()
+        with mock.patch(
+            "manuscript.management.commands.repair_folio_toponyms.REPAIRS", repairs
+        ):
+            call_command("repair_folio_toponyms", *args, stdout=out)
+        return out.getvalue()
+
+    def assert_renamed_record_untouched(self):
+        self.renamed.refresh_from_db()
+        self.assertEqual(self.renamed.folio_number, "3r")
+        self.assertEqual(self.renamed.line_code_range_start, "01.01.00")
+        self.assertEqual(self.renamed.canvas_id, "https://example.org/canvas/9")
+
+    def test_only_reports_by_default(self):
+        out = self.run_command()
+
+        self.assertIn("create record", out)
+        self.assertIn("not applied", out)
+        self.assertEqual(self.renamed.locationalias_set.count(), 2)
+        self.assertFalse(Folio.objects.filter(folio_number="13v").exists())
+
+    def test_creates_the_original_record_and_moves_toponyms(self):
+        self.run_command("--apply")
+
+        target = Folio.objects.get(manuscript=self.manuscript, folio_number="13v")
+        self.assertEqual(target.locationalias_set.count(), 2)
+        self.assertEqual(self.renamed.locationalias_set.count(), 0)
+        self.assertIsNone(target.line_code_range_start)
+        self.assert_renamed_record_untouched()
+
+    def test_moves_toponyms_to_an_existing_original_record(self):
+        target = Folio.objects.create(
+            manuscript=self.manuscript,
+            folio_number="13v",
+            line_code_range_start="03.10.00",
+            line_code_range_end="03.12.08",
+        )
+        self.run_command("--apply")
+
+        self.assertEqual(target.locationalias_set.count(), 2)
+        self.assertEqual(self.renamed.locationalias_set.count(), 0)
+        self.assertEqual(
+            Folio.objects.filter(
+                manuscript=self.manuscript, folio_number="13v"
+            ).count(),
+            1,
+        )
+        target.refresh_from_db()
+        self.assertEqual(target.line_code_range_start, "03.10.00")
+        self.assert_renamed_record_untouched()
+
+    def test_running_again_changes_nothing(self):
+        self.run_command("--apply")
+        out = self.run_command("--apply")
+
+        self.assertIn("it has 0 toponyms, not 2", out)
+        target = Folio.objects.get(manuscript=self.manuscript, folio_number="13v")
+        self.assertEqual(target.locationalias_set.count(), 2)
+
+    def test_skips_a_record_whose_toponyms_have_changed(self):
+        out = self.run_command("--apply", expected=3)
+
+        self.assertIn("it has 2 toponyms, not 3", out)
+        self.assertEqual(self.renamed.locationalias_set.count(), 2)
+
+    def test_skips_a_record_that_was_renumbered(self):
+        out = self.run_command("--apply", current="9r")
+
+        self.assertIn('it is now numbered "3r"', out)
+        self.assertEqual(self.renamed.locationalias_set.count(), 2)
+
+    def test_skips_when_several_records_have_the_original_number(self):
+        for _ in range(2):
+            Folio.objects.create(manuscript=self.manuscript, folio_number="13v")
+        out = self.run_command("--apply")
+
+        self.assertIn("2 records are numbered 13v", out)
+        self.assertEqual(self.renamed.locationalias_set.count(), 2)
