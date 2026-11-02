@@ -7,6 +7,7 @@ from django.contrib.contenttypes.admin import GenericTabularInline
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Value
 from django.db.models.functions import Concat
+from django.forms.models import BaseInlineFormSet
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -41,6 +42,7 @@ from manuscript.resources import (
     LocationAliasResource,
     LineCodeResource,
 )
+from manuscript.utils import normalize_folio_label
 from textannotation.admin import (
     CrossReferenceAdminForm,
     EditorialNoteAdminForm,
@@ -67,13 +69,84 @@ class StanzaInline(admin.StackedInline):
     )
 
 
+def folio_toponym_count(folio):
+    """How many toponym aliases are attached to a folio record"""
+    if not folio.pk:
+        return 0
+    count = getattr(folio, "toponym_total", None)
+    return folio.locationalias_set.count() if count is None else count
+
+
+def toponyms_phrase(count):
+    return f"{count} toponym{'' if count == 1 else 's'}"
+
+
+def folio_number_taken(folio, manuscript, number):
+    """Whether another folio of the manuscript has this number, ignoring
+    differences like "f. 12r" and "12r\""""
+    key = normalize_folio_label(number)
+    if not manuscript or not key:
+        return False
+    others = Folio.objects.filter(manuscript=manuscript).exclude(pk=folio.pk)
+    return any(
+        normalize_folio_label(other) == key
+        for other in others.values_list("folio_number", flat=True)
+    )
+
+
 class FolioAdminForm(forms.ModelForm):
+    # Toponyms are attached to the folio record, not its number, so renaming a
+    # record to make it a different folio silently moves its toponyms there
+    confirm_rename = forms.BooleanField(
+        required=False,
+        label="Yes, correct this folio's number",
+        help_text="Needed to change the number of a folio that has toponyms.",
+    )
+
     class Meta:
         model = Folio
         fields = "__all__"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        toponyms = folio_toponym_count(self.instance)
+        if "folio_number" in self.fields:
+            if toponyms:
+                self.fields["folio_number"].help_text = (
+                    f"This folio has {toponyms_phrase(toponyms)}, which stay with "
+                    "this record if its number changes. Only change the number to "
+                    "correct it; to record a different folio, add a new one."
+                )
+            if not self.instance.pk:
+                self.fields["folio_number"].required = True
+        if "manuscript" in self.fields and not self.instance.pk:
+            self.fields["manuscript"].required = True
+
     def clean(self):
         cleaned_data = super().clean()
+        if "folio_number" in self.changed_data:
+            number = cleaned_data.get("folio_number")
+            manuscript = cleaned_data.get("manuscript", self.instance.manuscript)
+            toponyms = folio_toponym_count(self.instance)
+            if toponyms and not cleaned_data.get("confirm_rename"):
+                add_url = reverse("admin:manuscript_folio_add")
+                self.add_error(
+                    "folio_number",
+                    format_html(
+                        "This folio's {} would move to \"{}\" with it. If you're "
+                        "correcting this folio's number, tick the box below and "
+                        'save again. To record a different folio, <a href="{}">add '
+                        "a new folio</a> instead.",
+                        toponyms_phrase(toponyms),
+                        number,
+                        f"{add_url}?manuscript={self.instance.manuscript_id}",
+                    ),
+                )
+            elif folio_number_taken(self.instance, manuscript, number):
+                self.add_error(
+                    "folio_number",
+                    f'{manuscript} already has a folio numbered "{number}".',
+                )
         if "canvas_id" in self.changed_data:
             # the recorded canvas details describe the previously linked
             # canvas, so drop them when the canvas ID is changed by hand
@@ -110,13 +183,64 @@ def linked_image_link(folio, thumbnail=False):
     )
 
 
+class FolioInlineForm(forms.ModelForm):
+    class Meta:
+        model = Folio
+        fields = ("folio_number", "line_code_range_start", "line_code_range_end")
+        help_texts = {
+            "folio_number": (
+                "Locked on folios with toponyms, which stay with the record if "
+                "its number changes. To correct one, open it with its Change "
+                "link. To record a different folio, use Add another Folio."
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if folio_toponym_count(self.instance):
+            self.fields["folio_number"].disabled = True
+        if not self.instance.pk:
+            self.fields["folio_number"].required = True
+
+    def clean(self):
+        cleaned_data = super().clean()
+        number = cleaned_data.get("folio_number")
+        if "folio_number" in self.changed_data and folio_number_taken(
+            self.instance, self.instance.manuscript, number
+        ):
+            self.add_error(
+                "folio_number",
+                f'{self.instance.manuscript} already has a folio numbered "{number}".',
+            )
+        return cleaned_data
+
+
+class FolioInlineFormSet(BaseInlineFormSet):
+    def clean(self):
+        """Folio numbers added or changed together can't repeat each other"""
+        super().clean()
+        seen = set()
+        for form in self.forms:
+            if "folio_number" not in form.changed_data:
+                continue
+            number = form.cleaned_data.get("folio_number")
+            key = normalize_folio_label(number)
+            if key and key in seen:
+                form.add_error(
+                    "folio_number", f'Folio "{number}" is entered more than once.'
+                )
+            seen.add(key)
+
+
 class FolioInline(admin.TabularInline):
-    """Compact list of a manuscript's folios for editing folio numbers and line
+    """Compact list of a manuscript's folios for adding folios and editing line
     ranges. Other details are edited on each folio's own page, and images are
-    linked on the Link IIIF canvases page. Folios aren't added or deleted here:
-    deleting a folio also deletes its toponym aliases."""
+    linked on the Link IIIF canvases page. Folios aren't deleted here: deleting
+    a folio also deletes its toponym aliases."""
 
     model = Folio
+    form = FolioInlineForm
+    formset = FolioInlineFormSet
     classes = ("collapse",)
     extra = 0
     can_delete = False
@@ -125,17 +249,26 @@ class FolioInline(admin.TabularInline):
         "folio_number",
         "line_code_range_start",
         "line_code_range_end",
+        "toponym_count",
         "linked_image",
     )
-    readonly_fields = ("linked_image",)
+    readonly_fields = ("toponym_count", "linked_image")
     ordering = ("canvas_index", "folio_number")
 
-    def has_add_permission(self, request, obj=None):
-        return False
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(toponym_total=Count("locationalias"))
+        )
+
+    @admin.display(description="Toponyms")
+    def toponym_count(self, folio):
+        return folio_toponym_count(folio) if folio.pk else "-"
 
     @admin.display(description="Linked image")
     def linked_image(self, folio):
-        return linked_image_link(folio)
+        return linked_image_link(folio) if folio.pk else "-"
 
 
 class DetailInline(admin.StackedInline):
@@ -527,6 +660,24 @@ class FolioAdmin(ImportExportModelAdmin):
         ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
     )
 
+    def get_fieldsets(self, request, obj=None):
+        if obj is None:
+            return (
+                ("Folio Information", {"fields": ("manuscript", "folio_number")}),
+                (
+                    "Line Range",
+                    {"fields": ("line_code_range_start", "line_code_range_end")},
+                ),
+                ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
+            )
+        if folio_toponym_count(obj):
+            information = (
+                "Folio Information",
+                {"fields": ("manuscript", "folio_number", "confirm_rename")},
+            )
+            return (information, *self.fieldsets[1:])
+        return self.fieldsets
+
     @admin.display(description="Linked image")
     def linked_image(self, obj):
         if not obj.pk or not obj.manuscript_id:
@@ -622,10 +773,6 @@ class FolioAdmin(ImportExportModelAdmin):
         return format_html("".join(html))
 
     stanza_list.short_description = "Stanzas on this Folio"
-
-    def has_add_permission(self, request):
-        """Disable manual adding - folios should be created via import"""
-        return False
 
     def has_delete_permission(self, request, obj=None):
         """Allow deletion but with a warning"""
