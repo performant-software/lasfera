@@ -1,0 +1,41 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script src="{% static 'admin/js/cancel.js' %}" async></script>
+{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url 'admin:manuscript_folio_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; <a href="{{ change_url }}">{{ manuscript }} · {{ old_number|default:"(no folio number)" }}</a>
+    &rsaquo; Change folio number
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    <p>
+      Changing {{ manuscript }} folio "{{ old_number|default:"(no folio number)" }}" to
+      "{{ new_number|default:"(no folio number)" }}" will also change the folio of
+      {{ toponyms|length }} toponym{{ toponyms|length|pluralize }}:
+    </p>
+    <ul>
+      {% for alias_url, alias, toponym in toponyms %}
+        <li><a href="{{ alias_url }}">{{ alias }}</a> · {{ toponym }}</li>
+      {% endfor %}
+    </ul>
+    <p>If this is a different folio rather than a correction, <a href="{{ add_url }}">add a new folio</a> instead.</p>
+    <form method="post">
+      {% csrf_token %}
+      {% for name, value in hidden_fields %}
+        <input type="hidden" name="{{ name }}" value="{{ value }}">
+      {% endfor %}
+      <input type="submit" name="_rename_confirmed" value="Yes, I'm sure">
+      <a href="{{ change_url }}" class="button cancel-link" style="margin-left: 0.5em;">No, take me back</a>
+    </form>
+  </div>
+{% endblock %}

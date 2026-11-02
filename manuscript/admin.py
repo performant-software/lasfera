@@ -94,15 +94,35 @@ def folio_number_taken(folio, manuscript, number):
     )
 
 
-class FolioAdminForm(forms.ModelForm):
-    # Toponyms are attached to the folio record, not its number, so renaming a
-    # record to make it a different folio silently moves its toponyms there
-    confirm_rename = forms.BooleanField(
-        required=False,
-        label="Yes, correct this folio's number",
-        help_text="Needed to change the number of a folio that has toponyms.",
+def folio_toponym_rows(folio):
+    """A folio's toponym aliases, as (alias admin URL, alias, toponym link)"""
+    aliases = folio.locationalias_set.select_related("location").order_by(
+        "placename_alias", "id"
     )
+    rows = []
+    for alias in aliases:
+        if alias.location:
+            location = alias.location
+            name = location.name or location.placename_modern or ""
+            toponym = format_html(
+                '<a href="{}">{}</a> {}',
+                reverse("admin:manuscript_location_change", args=[location.pk]),
+                name or location.placename_id,
+                f"({location.placename_id})" if name else "",
+            )
+        else:
+            toponym = "-"
+        rows.append(
+            (
+                reverse("admin:manuscript_locationalias_change", args=[alias.pk]),
+                alias.placename_alias or f"Alias {alias.pk}",
+                toponym,
+            )
+        )
+    return rows
 
+
+class FolioAdminForm(forms.ModelForm):
     class Meta:
         model = Folio
         fields = "__all__"
@@ -113,9 +133,10 @@ class FolioAdminForm(forms.ModelForm):
         if "folio_number" in self.fields:
             if toponyms:
                 self.fields["folio_number"].help_text = (
-                    f"This folio has {toponyms_phrase(toponyms)}, which stay with "
-                    "this record if its number changes. Only change the number to "
-                    "correct it; to record a different folio, add a new one."
+                    f"This folio has {toponyms_phrase(toponyms)}. Toponyms stay "
+                    "with this record if its number changes. Only change the "
+                    "number to correct it; to record a different folio, add a "
+                    "new one."
                 )
             if not self.instance.pk:
                 self.fields["folio_number"].required = True
@@ -127,22 +148,7 @@ class FolioAdminForm(forms.ModelForm):
         if "folio_number" in self.changed_data:
             number = cleaned_data.get("folio_number")
             manuscript = cleaned_data.get("manuscript", self.instance.manuscript)
-            toponyms = folio_toponym_count(self.instance)
-            if toponyms and not cleaned_data.get("confirm_rename"):
-                add_url = reverse("admin:manuscript_folio_add")
-                self.add_error(
-                    "folio_number",
-                    format_html(
-                        "This folio's {} would move to \"{}\" with it. If you're "
-                        "correcting this folio's number, tick the box below and "
-                        'save again. To record a different folio, <a href="{}">add '
-                        "a new folio</a> instead.",
-                        toponyms_phrase(toponyms),
-                        number,
-                        f"{add_url}?manuscript={self.instance.manuscript_id}",
-                    ),
-                )
-            elif folio_number_taken(self.instance, manuscript, number):
+            if folio_number_taken(self.instance, manuscript, number):
                 self.add_error(
                     "folio_number",
                     f'{manuscript} already has a folio numbered "{number}".',
@@ -608,6 +614,7 @@ class FolioAdmin(ImportExportModelAdmin):
         "canvas_label",
         "line_range_display",
         "stanza_count",
+        "toponym_count",
     ]
     list_select_related = ["manuscript"]
     ordering = ["manuscript__siglum", "folio_number"]
@@ -670,13 +677,66 @@ class FolioAdmin(ImportExportModelAdmin):
                 ),
                 ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
             )
-        if folio_toponym_count(obj):
-            information = (
-                "Folio Information",
-                {"fields": ("manuscript", "folio_number", "confirm_rename")},
-            )
-            return (information, *self.fieldsets[1:])
         return self.fieldsets
+
+    def get_queryset(self, request):
+        return (
+            super().get_queryset(request).annotate(toponym_total=Count("locationalias"))
+        )
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if (
+            request.method == "POST"
+            and object_id
+            and "_rename_confirmed" not in request.POST
+        ):
+            response = self.rename_confirmation(request, object_id)
+            if response:
+                return response
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
+    def rename_confirmation(self, request, object_id):
+        """Toponyms are attached to the folio record, not its number, so renaming
+        a record moves them too. Returns a page listing them to confirm against,
+        or None if the submission has no such rename to confirm, leaving any
+        errors to the usual change form."""
+        folio = self.get_object(request, unquote(object_id))
+        if folio is None or not self.has_change_permission(request, folio):
+            return None
+        toponyms = folio_toponym_rows(folio)
+        if not toponyms:
+            return None
+        old_number = folio.folio_number
+        form_class = self.get_form(request, folio, change=True)
+        form = form_class(request.POST, request.FILES, instance=folio)
+        if not form.is_valid() or "folio_number" not in form.changed_data:
+            return None
+        add_url = reverse("admin:manuscript_folio_add")
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.opts,
+            "title": "Are you sure?",
+            "manuscript": folio.manuscript,
+            "old_number": old_number,
+            "new_number": form.cleaned_data["folio_number"],
+            "toponyms": toponyms,
+            "change_url": reverse("admin:manuscript_folio_change", args=[folio.pk]),
+            "add_url": f"{add_url}?manuscript={folio.manuscript_id}",
+            # resubmitted as they are, including which save button was used
+            "hidden_fields": [
+                (name, value)
+                for name, values in request.POST.lists()
+                if name != "csrfmiddlewaretoken"
+                for value in values
+            ],
+        }
+        return TemplateResponse(
+            request, "admin/manuscript/folio/rename_confirmation.html", context
+        )
+
+    @admin.display(description="Toponyms", ordering="toponym_total")
+    def toponym_count(self, obj):
+        return folio_toponym_count(obj)
 
     @admin.display(description="Linked image")
     def linked_image(self, obj):
@@ -688,31 +748,9 @@ class FolioAdmin(ImportExportModelAdmin):
     def toponym_list(self, obj):
         if not obj.pk:
             return "-"
-        aliases = obj.locationalias_set.select_related("location").order_by(
-            "placename_alias", "id"
-        )
-        if not aliases:
+        rows = folio_toponym_rows(obj)
+        if not rows:
             return "None"
-        rows = []
-        for alias in aliases:
-            if alias.location:
-                location = alias.location
-                name = location.name or location.placename_modern or ""
-                toponym = format_html(
-                    '<a href="{}">{}</a> {}',
-                    reverse("admin:manuscript_location_change", args=[location.pk]),
-                    name or location.placename_id,
-                    f"({location.placename_id})" if name else "",
-                )
-            else:
-                toponym = "-"
-            rows.append(
-                (
-                    reverse("admin:manuscript_locationalias_change", args=[alias.pk]),
-                    alias.placename_alias or f"Alias {alias.pk}",
-                    toponym,
-                )
-            )
         return format_html(
             '<div style="max-height: 400px; overflow-y: auto;">'
             '<table style="width: 100%;"><tr><th>Alias</th><th>Toponym</th></tr>'

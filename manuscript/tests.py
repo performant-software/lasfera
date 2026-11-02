@@ -24,6 +24,7 @@ from manuscript.models import (
 from manuscript.utils import get_canvases, normalize_folio_label
 
 MANIFEST_URL = "https://example.org/iiif/ms/manifest.json"
+RENAME_CONFIRMATION_TEMPLATE = "admin/manuscript/folio/rename_confirmation.html"
 User = get_user_model()
 
 
@@ -946,31 +947,99 @@ class FolioRenameAndAddTest(TestCase):
         response = self.client.get(
             reverse("admin:manuscript_folio_change", args=[self.with_toponyms.pk])
         )
-        self.assertContains(response, "This folio has 1 toponym,")
-        self.assertContains(response, 'name="confirm_rename"')
+        self.assertContains(response, "This folio has 1 toponym.")
 
     def test_no_warning_without_toponyms(self):
         response = self.client.get(
             reverse("admin:manuscript_folio_change", args=[self.without_toponyms.pk])
         )
-        self.assertNotContains(response, 'name="confirm_rename"')
+        self.assertNotContains(response, "This folio has")
 
-    def test_renaming_with_toponyms_needs_confirming(self):
+    def test_renaming_with_toponyms_lists_them_to_confirm(self):
         response = self.save_folio(self.with_toponyms, "3r")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "would move to")
+        self.assertTemplateUsed(response, RENAME_CONFIRMATION_TEMPLATE)
+        self.assertContains(response, 'folio "13v" to')
+        self.assertContains(response, '"3r"')
+        self.assertContains(response, "1 toponym:")
+        self.assertContains(response, "Asia")
+        self.assertContains(response, "Tana</a> (T001)")
         self.assertContains(response, f"?manuscript={self.manuscript.pk}")
         self.with_toponyms.refresh_from_db()
         self.assertEqual(self.with_toponyms.folio_number, "13v")
 
-    def test_confirmed_rename_keeps_toponyms(self):
-        response = self.save_folio(self.with_toponyms, "13r", confirm_rename="on")
+    def test_confirming_a_rename_saves_what_was_submitted(self):
+        response = self.save_folio(
+            self.with_toponyms,
+            "13r",
+            line_code_range_start="01.01.00",
+            folio_notes='<p class="x">"Tana" &amp; more</p>',
+            _continue="Save and continue editing",
+        )
+        data = dict(response.context["hidden_fields"])
+        self.assertContains(response, 'name="_continue"')
 
-        self.assertEqual(response.status_code, 302)
+        response = self.client.post(
+            reverse("admin:manuscript_folio_change", args=[self.with_toponyms.pk]),
+            {**data, "_rename_confirmed": "Yes"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("admin:manuscript_folio_change", args=[self.with_toponyms.pk]),
+        )
         self.with_toponyms.refresh_from_db()
         self.assertEqual(self.with_toponyms.folio_number, "13r")
+        self.assertEqual(self.with_toponyms.line_code_range_start, "01.01.00")
+        self.assertIn('"Tana"', self.with_toponyms.folio_notes)
         self.assertEqual(self.with_toponyms.locationalias_set.count(), 1)
+
+    def test_invalid_rename_shows_errors_instead_of_confirming(self):
+        response = self.save_folio(self.with_toponyms, "14r")
+
+        self.assertTemplateNotUsed(response, RENAME_CONFIRMATION_TEMPLATE)
+        self.assertContains(response, "already has a folio numbered")
+        self.with_toponyms.refresh_from_db()
+        self.assertEqual(self.with_toponyms.folio_number, "13v")
+
+    def test_confirmation_needs_change_permission(self):
+        viewer = User.objects.create_user("viewer", password="pw", is_staff=True)
+        viewer.user_permissions.add(Permission.objects.get(codename="view_folio"))
+        self.client.force_login(viewer)
+
+        response = self.save_folio(self.with_toponyms, "3r")
+
+        self.assertEqual(response.status_code, 403)
+        self.with_toponyms.refresh_from_db()
+        self.assertEqual(self.with_toponyms.folio_number, "13v")
+
+    def test_folio_list_shows_toponym_counts(self):
+        response = self.client.get(reverse("admin:manuscript_folio_changelist"))
+
+        self.assertContains(response, ">Toponyms<")
+        counts = {
+            folio.folio_number: folio.toponym_total
+            for folio in response.context["cl"].result_list
+        }
+        self.assertEqual(counts, {"13v": 1, "14r": 0})
+        self.assertContains(response, '<td class="field-toponym_count">1</td>')
+
+    def test_folio_list_sorts_by_toponym_count(self):
+        response = self.client.get(
+            reverse("admin:manuscript_folio_changelist"), {"o": "-6"}
+        )
+
+        self.assertEqual(
+            [folio.folio_number for folio in response.context["cl"].result_list],
+            ["13v", "14r"],
+        )
+        response = self.client.get(
+            reverse("admin:manuscript_folio_changelist"), {"o": "6"}
+        )
+        self.assertEqual(
+            [folio.folio_number for folio in response.context["cl"].result_list],
+            ["14r", "13v"],
+        )
 
     def test_saving_without_renaming_needs_no_confirmation(self):
         response = self.save_folio(
@@ -1007,7 +1076,6 @@ class FolioRenameAndAddTest(TestCase):
             response.context["adminform"].form.initial["manuscript"],
             str(self.manuscript.pk),
         )
-        self.assertNotContains(response, 'name="confirm_rename"')
 
         response = self.client.post(
             add_url,
