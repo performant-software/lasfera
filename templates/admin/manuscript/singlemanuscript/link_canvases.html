@@ -30,7 +30,9 @@
     #canvas-viewer .canvas-viewer-image img { display: block; max-width: calc(92vw - 16px); max-height: calc(92vh - 100px); }
     #canvas-viewer footer { padding: 6px 12px 10px; font-size: 0.8125rem; }
     #canvas-table .canvas-folio input { width: 9em; }
-    #canvas-table .canvas-suggestion { margin-left: 0.5em; font-size: 0.8125rem; padding: 2px 6px; cursor: pointer; }
+    #canvas-table .canvas-suggestion, #canvas-table .canvas-add-folio { margin-left: 0.5em; font-size: 0.8125rem; padding: 2px 6px; cursor: pointer; }
+    #canvas-table .canvas-add-folio { margin-left: 0; }
+    #canvas-table .canvas-folio-entry { margin-bottom: 4px; }
     #canvas-table tr.is-changed td { background: var(--selected-row, #ffc); }
     #canvas-table tr.has-problem td { background: var(--message-error-bg, #ffefef); }
     #canvas-table tr.is-target { outline: 2px solid var(--link-fg, #447e9b); outline-offset: -2px; }
@@ -63,11 +65,12 @@
         <ul>
           <li>Each row is one image (canvas) from this manuscript's <a href="{{ manuscript.iiif_url }}" target="_blank" rel="noopener">IIIF manifest</a>.</li>
           <li>Look at the image, work out which folio of the manuscript it shows, and enter that folio's
-number (for example 12r) to link the image to the text.</li>
+number (for example 12r) to link the image to the text. If an image shows more than one folio,
+          use <strong>Add another folio</strong> to enter each of them.</li>
           <li>You can click each image to see it larger.</li>
           <li>For a quick start, use <strong>Fill in folio numbers from manifest labels</strong>: when an
-          image's manifest label (e.g. "Carta: 53r") appears only once in the manifest and matches a Folio
-          record that isn't linked yet, it fills in that folio's number. Check the results before saving.</li>
+          image's manifest label (e.g. "Carta: 53r" or "13v-14r") appears only once in the manifest and matches
+          Folio records that aren't linked yet, it fills in those folios' numbers. Check the results before saving.</li>
           <li>Clear a folio number to unlink it.</li>
           <li>Use the <strong>Show</strong> menu to narrow the list, for example to images not linked yet, your
           unsaved changes, or rows with problems that need fixing before you can save.</li>
@@ -104,7 +107,7 @@ number (for example 12r) to link the image to the text.</li>
           </select>
         </label>
         <button type="button" class="button" id="canvas-fill"
-                title="For each image without a folio number, use its manifest label as the folio number if the label isn't repeated in the manifest and matches exactly one Folio record that isn't linked to an image yet. Nothing is saved until you click Save.">
+                title="For each image without a folio number, use the folio numbers in its manifest label if the label isn't repeated in the manifest and they each match exactly one Folio record that isn't linked to an image yet. Nothing is saved until you click Save.">
           Fill in folio numbers from manifest labels
         </button>
         <span id="canvas-summary"></span>
