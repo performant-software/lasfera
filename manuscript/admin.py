@@ -516,9 +516,12 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
                 # keep what was entered so it can be corrected
                 if isinstance(raw_rows, list):
                     submitted = {
-                        str(row.get("id")): str(row.get("folio") or "")
+                        str(row.get("id")): [
+                            str(number) for number in row.get("folios") or []
+                        ]
                         for row in raw_rows
                         if isinstance(row, dict)
+                        and isinstance(row.get("folios") or [], list)
                     }
             else:
                 if counts:

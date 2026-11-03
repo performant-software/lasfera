@@ -691,14 +691,6 @@ class Folio(models.Model):
 
     class Meta:
         ordering = ["folio_number"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["manuscript", "canvas_id"],
-                condition=Q(canvas_id__isnull=False),
-                name="unique_folio_canvas_per_manuscript",
-                violation_error_message="Another folio in this manuscript is already linked to this IIIF canvas.",
-            )
-        ]
 
 
 class SingleManuscript(models.Model):
