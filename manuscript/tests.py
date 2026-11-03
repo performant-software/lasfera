@@ -789,6 +789,52 @@ class StanzaFolioDividerTest(TestCase):
         self.assertEqual(self.stanza_dividers(response), [("01.01.00", "1v")])
         self.assertEqual(self.line_breaks(response), [("01.01.01", "2r")])
 
+    def test_shows_a_folio_s_public_note_at_a_divider(self):
+        self.add_folios(("1r", "01.01.00", "01.02.08"), ("1v", "01.03.00", "01.04.08"))
+        Folio.objects.filter(folio_number="1v").update(
+            public_note="<div>Stanzas appear elsewhere</div>",
+            folio_notes="Working note",
+        )
+
+        response = self.get_page()
+
+        self.assertContains(response, "<div>Stanzas appear elsewhere</div>", count=1)
+        self.assertContains(response, 'class="public-note"', count=1)
+        self.assertNotContains(response, "Working note")
+
+    def test_shows_a_folio_s_public_note_at_a_mid_stanza_break(self):
+        self.add_folios(("1r", "01.01.00", "01.02.04"), ("1v", "01.02.05", "01.04.08"))
+        Folio.objects.filter(folio_number="1v").update(public_note="Mid-stanza note")
+
+        self.assertContains(self.get_page(), "Mid-stanza note", count=1)
+
+    def test_shows_the_manuscript_s_public_note_at_the_start_of_the_text(self):
+        self.manuscript.public_note = "Images may not match the text"
+        self.manuscript.save()
+        other = SingleManuscript.objects.create(item_id=2, siglum="Test2")
+
+        response = self.get_page()
+
+        self.assertContains(response, "Images may not match the text", count=1)
+        html = response.content.decode()
+        self.assertLess(
+            html.index("Images may not match the text"), html.index('id="libro-1"')
+        )
+        self.assertNotContains(
+            self.client.get(reverse("manuscript_stanzas", args=[other.siglum])),
+            "Images may not match the text",
+        )
+
+    def test_leaves_out_public_notes_without_text(self):
+        self.manuscript.public_note = "<ul><li><br></li></ul>"
+        self.manuscript.save()
+        self.add_folios(("1r", "01.01.00", "01.02.08"), ("1v", "01.03.00", "01.04.08"))
+        Folio.objects.filter(folio_number="1v").update(public_note="<div>&nbsp;</div>")
+
+        response = self.get_page()
+
+        self.assertNotContains(response, 'class="public-note')
+
 
 class RepairFolioToponymsTest(TestCase):
     def setUp(self):

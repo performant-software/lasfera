@@ -79,6 +79,12 @@ def annotate_text(html_content, annotations):
 
 
 @register.filter
+def has_text(html):
+    """Whether rich text has any text, since an emptied editor can leave markup"""
+    return bool(html and BeautifulSoup(html, "html.parser").get_text(strip=True))
+
+
+@register.filter
 def format_ms(manuscript):
     """Format manuscripts for dropdowns as:
     Siglum (City, HoldingInstitution, Shelfmark)"""

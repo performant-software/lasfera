@@ -620,6 +620,11 @@ class Folio(models.Model):
         validators=[validate_line_number_code],
     )
     folio_notes = RichTextField(blank=True, null=True)
+    public_note = RichTextField(
+        blank=True,
+        null=True,
+        help_text="Shown to readers where this folio begins in the text.",
+    )
     manuscript = models.ForeignKey(
         "SingleManuscript", on_delete=models.CASCADE, blank=True, null=True
     )
@@ -714,6 +719,11 @@ class SingleManuscript(models.Model):
         null=True,
         help_text="The URL to the IIIF manifest for the manuscript. If there isn't one, leave blank.",
         verbose_name="IIIF URL",
+    )
+    public_note = RichTextField(
+        blank=True,
+        null=True,
+        help_text="Shown to readers at the start of the text.",
     )
     gazetteer_url = models.URLField(
         max_length=255,
