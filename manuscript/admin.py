@@ -653,7 +653,7 @@ class FolioAdmin(ImportExportModelAdmin):
             },
         ),
         ("Toponyms", {"fields": ("toponym_list",)}),
-        ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
+        ("Notes", {"fields": ("folio_includes_map", "folio_notes", "public_note")}),
     )
 
     def get_fieldsets(self, request, obj=None):
@@ -664,7 +664,10 @@ class FolioAdmin(ImportExportModelAdmin):
                     "Line Range",
                     {"fields": ("line_code_range_start", "line_code_range_end")},
                 ),
-                ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
+                (
+                    "Notes",
+                    {"fields": ("folio_includes_map", "folio_notes", "public_note")},
+                ),
             )
         return self.fieldsets
 
