@@ -516,9 +516,12 @@ class SingleManuscriptAdmin(ImportExportModelAdmin):
                 # keep what was entered so it can be corrected
                 if isinstance(raw_rows, list):
                     submitted = {
-                        str(row.get("id")): str(row.get("folio") or "")
+                        str(row.get("id")): [
+                            str(number) for number in row.get("folios") or []
+                        ]
                         for row in raw_rows
                         if isinstance(row, dict)
+                        and isinstance(row.get("folios") or [], list)
                     }
             else:
                 if counts:
@@ -653,7 +656,7 @@ class FolioAdmin(ImportExportModelAdmin):
             },
         ),
         ("Toponyms", {"fields": ("toponym_list",)}),
-        ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
+        ("Notes", {"fields": ("folio_includes_map", "folio_notes", "public_note")}),
     )
 
     def get_fieldsets(self, request, obj=None):
@@ -664,7 +667,10 @@ class FolioAdmin(ImportExportModelAdmin):
                     "Line Range",
                     {"fields": ("line_code_range_start", "line_code_range_end")},
                 ),
-                ("Notes", {"fields": ("folio_includes_map", "folio_notes")}),
+                (
+                    "Notes",
+                    {"fields": ("folio_includes_map", "folio_notes", "public_note")},
+                ),
             )
         return self.fieldsets
 

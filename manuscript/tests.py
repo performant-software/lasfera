@@ -6,7 +6,6 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
-from django.db import IntegrityError
 from django.forms import inlineformset_factory
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -237,20 +236,24 @@ class LinkFolioCanvasesTest(TestCase):
         folio.refresh_from_db()
         self.assertIsNone(folio.canvas_id)
 
-    def test_canvas_unique_per_manuscript(self):
+    def test_folios_can_share_a_canvas(self):
         canvas_id = "https://example.org/iiif/ms/canvas/p0001"
-        Folio.objects.create(manuscript=self.manuscript, canvas_id=canvas_id)
-        with self.assertRaises(IntegrityError):
-            Folio.objects.create(manuscript=self.manuscript, canvas_id=canvas_id)
+        for number in ("13v", "14r"):
+            Folio.objects.create(
+                manuscript=self.manuscript, folio_number=number, canvas_id=canvas_id
+            )
+        self.assertEqual(
+            self.manuscript.folio_set.filter(canvas_id=canvas_id).count(), 2
+        )
 
 
-def canvas_row(number, folio="", label=None):
+def canvas_row(number, *folios, label=None):
     return {
         "id": f"https://example.org/iiif/ms/canvas/p{number:04d}",
         "index": number - 1,
         "label": label if label is not None else f"label {number}",
         "image_id": f"https://example.org/image/{number}",
-        "folio": folio,
+        "folios": list(folios),
     }
 
 
@@ -334,6 +337,39 @@ class LinkCanvasesTest(TestCase):
 
         folio.refresh_from_db()
         self.assertEqual(folio.canvas_id, canvas_row(9)["id"])
+
+    def test_links_several_folios_to_a_canvas(self):
+        existing = self.add_folio("13v")
+        counts = self.link([canvas_row(1, "13v", "14r")])
+
+        self.assertEqual(counts["linked"], 2)
+        self.assertEqual([folio.folio_number for folio in self.created], ["14r"])
+        existing.refresh_from_db()
+        self.assertEqual(existing.canvas_id, canvas_row(1)["id"])
+        self.assertEqual(
+            Folio.objects.get(folio_number="14r").canvas_id, canvas_row(1)["id"]
+        )
+
+    def test_removing_one_of_a_canvas_s_folios_only_unlinks_that_one(self):
+        kept = self.add_folio("13v", canvas=1)
+        removed = self.add_folio("14r", canvas=1)
+        counts = self.link([canvas_row(1, "13v")])
+
+        self.assertEqual(counts["unlinked"], 1)
+        kept.refresh_from_db()
+        removed.refresh_from_db()
+        self.assertEqual(kept.canvas_id, canvas_row(1)["id"])
+        self.assertIsNone(removed.canvas_id)
+
+    def test_same_folio_twice_on_a_canvas_counts_once(self):
+        folio = self.add_folio("13v")
+        rows = clean_canvas_rows([canvas_row(1, "13v", "f. 13v", " ")])
+
+        self.assertEqual(rows[0]["folios"], ["13v"])
+        counts, _ = link_canvases(self.manuscript, rows)
+        self.assertEqual(counts["linked"], 1)
+        folio.refresh_from_db()
+        self.assertEqual(folio.canvas_id, canvas_row(1)["id"])
 
     def test_same_folio_on_two_canvases_is_rejected(self):
         folio = self.add_folio("1r", canvas=1)
@@ -495,7 +531,7 @@ class LinkCanvasesViewTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "more than one image")
-        self.assertEqual(response.context["submitted"][canvas_row(2)["id"]], "1r")
+        self.assertEqual(response.context["submitted"][canvas_row(2)["id"]], ["1r"])
         self.assertFalse(Folio.objects.exists())
 
     def test_needs_folio_permission(self):
@@ -601,14 +637,26 @@ class VerifyCanvasLinksTest(TestCase):
         self.assertIn("canvas gone, and no replacement found: 1r", out)
         self.assertIn("1 could not be re-linked", out)
 
-    def test_does_not_take_a_canvas_linked_to_another_folio(self):
-        self.add_folio("1v", "b", 1, "1v", "img-b")
-        folio = self.add_folio("1r", "a", 0, "1r", "img-b")
-        out = self.run_command([("b", "1v", "img-b")])
+    def test_folios_sharing_a_canvas_are_re_linked_together(self):
+        folios = [
+            self.add_folio("13v", "a", 0, "13v-14r", "img-a"),
+            self.add_folio("14r", "a", 0, "13v-14r", "img-a"),
+        ]
+        out = self.run_command([("new-a", "13v-14r", "img-a")])
 
-        folio.refresh_from_db()
-        self.assertEqual(folio.canvas_id, "https://example.org/iiif/ms/canvas/a")
-        self.assertIn("its replacement is linked to another folio: 1r", out)
+        for folio in folios:
+            folio.refresh_from_db()
+            self.assertEqual(
+                folio.canvas_id, "https://example.org/iiif/ms/canvas/new-a"
+            )
+        self.assertIn("2 re-linked", out)
+
+    def test_folios_sharing_a_canvas_are_left_alone_when_it_is_still_there(self):
+        for number in ("13v", "14r"):
+            self.add_folio(number, "a", 0, "13v-14r", "img-a")
+        out = self.run_command([("a", "13v-14r", "img-a")])
+
+        self.assertIn("2 unchanged", out)
 
     def test_dry_run_does_not_save(self):
         folio = self.add_folio("1r", "a", 0, "1r", "img-a")
@@ -788,6 +836,52 @@ class StanzaFolioDividerTest(TestCase):
 
         self.assertEqual(self.stanza_dividers(response), [("01.01.00", "1v")])
         self.assertEqual(self.line_breaks(response), [("01.01.01", "2r")])
+
+    def test_shows_a_folio_s_public_note_at_a_divider(self):
+        self.add_folios(("1r", "01.01.00", "01.02.08"), ("1v", "01.03.00", "01.04.08"))
+        Folio.objects.filter(folio_number="1v").update(
+            public_note="<div>Stanzas appear elsewhere</div>",
+            folio_notes="Working note",
+        )
+
+        response = self.get_page()
+
+        self.assertContains(response, "<div>Stanzas appear elsewhere</div>", count=1)
+        self.assertContains(response, 'class="public-note"', count=1)
+        self.assertNotContains(response, "Working note")
+
+    def test_shows_a_folio_s_public_note_at_a_mid_stanza_break(self):
+        self.add_folios(("1r", "01.01.00", "01.02.04"), ("1v", "01.02.05", "01.04.08"))
+        Folio.objects.filter(folio_number="1v").update(public_note="Mid-stanza note")
+
+        self.assertContains(self.get_page(), "Mid-stanza note", count=1)
+
+    def test_shows_the_manuscript_s_public_note_at_the_start_of_the_text(self):
+        self.manuscript.public_note = "Images may not match the text"
+        self.manuscript.save()
+        other = SingleManuscript.objects.create(item_id=2, siglum="Test2")
+
+        response = self.get_page()
+
+        self.assertContains(response, "Images may not match the text", count=1)
+        html = response.content.decode()
+        self.assertLess(
+            html.index("Images may not match the text"), html.index('id="libro-1"')
+        )
+        self.assertNotContains(
+            self.client.get(reverse("manuscript_stanzas", args=[other.siglum])),
+            "Images may not match the text",
+        )
+
+    def test_leaves_out_public_notes_without_text(self):
+        self.manuscript.public_note = "<ul><li><br></li></ul>"
+        self.manuscript.save()
+        self.add_folios(("1r", "01.01.00", "01.02.08"), ("1v", "01.03.00", "01.04.08"))
+        Folio.objects.filter(folio_number="1v").update(public_note="<div>&nbsp;</div>")
+
+        response = self.get_page()
+
+        self.assertNotContains(response, 'class="public-note')
 
 
 class RepairFolioToponymsTest(TestCase):
