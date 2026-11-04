@@ -78,10 +78,6 @@ class Command(BaseCommand):
                 canvases_by_image[canvas["image_id"]].append(canvas)
 
         folios = list(manuscript.folio_set.exclude(canvas_id__isnull=True))
-        # canvases held by a valid link, which a re-linked folio can't take
-        used_canvas_ids = {
-            folio.canvas_id for folio in folios if folio.canvas_id in canvases_by_id
-        }
 
         notes = defaultdict(list)
         with transaction.atomic():
@@ -102,16 +98,10 @@ class Command(BaseCommand):
                 canvas, method = self.find_moved_canvas(
                     folio, canvases, canvases_by_image
                 )
-                if canvas and canvas["id"] not in used_canvas_ids:
+                if canvas:
                     notes[f"re-linked by {method}"].append(self.describe(folio, canvas))
                     self.apply_canvas(folio, canvas, dry_run)
-                    used_canvas_ids.add(canvas["id"])
                     counts["relinked"] += 1
-                elif canvas:
-                    notes[
-                        "canvas gone, and its replacement is linked to another folio"
-                    ].append(folio.folio_number or f"#{folio.pk}")
-                    counts["broken"] += 1
                 else:
                     notes["canvas gone, and no replacement found"].append(
                         folio.folio_number or f"#{folio.pk}"

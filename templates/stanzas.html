@@ -48,6 +48,13 @@
       display: none !important; /* Optional: Hide title if it's redundant */
     }
 
+    /* Public notes on a manuscript and on a folio */
+    .public-note {
+      margin-bottom: 1rem;
+      font-size: 0.875rem;
+      color: #4b5563;
+    }
+
     /* Hamburger menu styles */
     .hamburger-menu {
       display: inline-flex;
@@ -211,6 +218,9 @@
         <!-- Text content -->
         <div class="w-2/3">
           <div class="space-y-4">
+            {% if default_manuscript.public_note|has_text %}
+              <div class="public-note">{{ default_manuscript.public_note|safe }}</div>
+            {% endif %}
             {% for book_number, stanza_pairs in paired_books.items %}
               <div>
                 <!-- Book headers -->
@@ -231,6 +241,9 @@
                       </div>
                       <div class="flex-grow border-t border-gray-300"></div>
                     </div>
+                    {% if stanza_pair.current_folio.public_note|has_text %}
+                      <div class="public-note">{{ stanza_pair.current_folio.public_note|safe }}</div>
+                    {% endif %}
                   {% endif %}
                   {% for segment in stanza_pair.segments %}
                     {% if segment.folio_break %}
@@ -241,6 +254,9 @@
                         </div>
                         <div class="flex-grow border-t border-dashed border-gray-300"></div>
                       </div>
+                      {% if segment.folio_break.public_note|has_text %}
+                        <div class="public-note">{{ segment.folio_break.public_note|safe }}</div>
+                      {% endif %}
                     {% endif %}
                     <div class="grid grid-cols-2 gap-8 {% if forloop.last %}mb-8{% else %}mb-2{% endif %}">
                       <!-- Original stanza -->

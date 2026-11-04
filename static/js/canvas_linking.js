@@ -23,7 +23,6 @@
   // Same normalization as manuscript.utils.normalize_folio_label, so that
   // e.g. "Carta: 12 recto", "f. 12r" and "12r" are treated as the same folio
   const FOLIO_LABEL_PREFIX = /^(?:carta|folio|fol|ff|f|c)\s*[.:]?\s*(?=\d)/;
-  const RECTO_VERSO = /^(\d+|[ivxlc]+)[rv]$/;
   function normalizeFolioLabel(label) {
     if (!label) return '';
     let value = label.trim().toLowerCase();
@@ -41,6 +40,18 @@
     // roman-numbered flyleaves, e.g. "Ir", when that's the whole label
     if (/^[ivxlc]+[rv]$/i.test(label.trim())) return label.trim();
     return null;
+  }
+
+  // The folio numbers in a manifest label: one as above, or both from a label
+  // for an image of two folios, e.g. "13v" and "14r" from "13v-14r", unless a
+  // single folio record has that whole number
+  function folioNumbersFromLabel(label) {
+    const number = folioNumberFromLabel(label);
+    if (number) return [number];
+    const key = normalizeFolioLabel(label);
+    const pair = key.match(/^(\d+[rv])-(\d+[rv])$/);
+    if (!pair || foliosByKey.has(key)) return [];
+    return [folioNumberFromLabel(pair[1]), folioNumberFromLabel(pair[2])];
   }
 
   // Flatten a IIIF v2 or v3 label into a plain string
@@ -98,12 +109,21 @@
   const foliosByCanvas = new Map();
   const foliosByKey = new Map();
   for (const folio of folios) {
-    if (folio.canvas_id) foliosByCanvas.set(folio.canvas_id, folio);
+    if (folio.canvas_id) {
+      if (!foliosByCanvas.has(folio.canvas_id)) foliosByCanvas.set(folio.canvas_id, []);
+      foliosByCanvas.get(folio.canvas_id).push(folio);
+    }
     if (!folio.number) continue;
     const key = folioKey(folio.number);
     if (!foliosByKey.has(key)) foliosByKey.set(key, []);
     foliosByKey.get(key).push(folio);
   }
+
+  // an image's folios in order, e.g. 99v before 100r
+  for (const linked of foliosByCanvas.values()) {
+    linked.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+  }
+  const linkedFolios = (canvasId) => foliosByCanvas.get(canvasId) || [];
 
   let rows = [];
   let canvasPositions = new Map();
@@ -133,64 +153,77 @@
     row.notesEl.appendChild(note);
   }
 
+  // The folios entered for a row, leaving out blanks and repeats
+  function rowEntries(row) {
+    const entries = new Map();
+    for (const input of row.inputs) {
+      const value = input.value.trim();
+      if (value && !entries.has(folioKey(value))) entries.set(folioKey(value), value);
+    }
+    return [...entries].map(([key, value]) => ({ key, value }));
+  }
+
+  function setRowFolios(row, numbers) {
+    numbers.forEach((number, i) => {
+      if (i >= row.inputs.length) addFolioInput(row);
+      row.inputs[i].value = number;
+    });
+  }
+
   // Work out what saving would do for each row, and flag conflicts
   function update() {
     const entriesByKey = new Map();
     for (const row of rows) {
-      const value = row.input.value.trim();
-      if (!value) continue;
-      const key = folioKey(value);
-      if (!entriesByKey.has(key)) entriesByKey.set(key, []);
-      entriesByKey.get(key).push(row);
+      for (const { key } of rowEntries(row)) {
+        if (!entriesByKey.has(key)) entriesByKey.set(key, []);
+        entriesByKey.get(key).push(row);
+      }
     }
 
     let linked = 0;
     let changed = 0;
     let problems = 0;
     for (const row of rows) {
-      const value = row.input.value.trim();
-      const current = foliosByCanvas.get(row.canvas.id);
+      const entries = rowEntries(row);
+      const current = linkedFolios(row.canvas.id);
       row.notesEl.replaceChildren();
-      if (row.suggestion) row.suggestion.hidden = !!value;
+      if (row.suggestion) row.suggestion.hidden = entries.length > 0;
+      row.addButton.hidden = row.inputs.some((input) => !input.value.trim());
       row.isChanged = false;
       row.hasProblem = false;
 
-      if (!value) {
-        if (current) {
-          row.isChanged = true;
-          addNote(row, `Will unlink folio ${current.number}.`);
-        }
-      } else {
-        const key = folioKey(value);
+      const entered = new Set();
+      let isLinked = false;
+      for (const { key, value } of entries) {
         const matches = foliosByKey.get(key) || [];
         const sameEntry = entriesByKey.get(key).filter((other) => other !== row);
         if (sameEntry.length) {
           row.hasProblem = true;
           const images = sameEntry.map((other) => other.canvas.index + 1).join(', ');
-          addNote(row, `Also entered for image ${images}. Each folio can be linked to one image.`, 'problem');
+          addNote(row, `${value}: also entered for image ${images}. Each folio can be linked to one image.`, 'problem');
         }
         if (matches.length > 1) {
           row.hasProblem = true;
           const numbers = matches.map((folio) => `"${folio.number}"`).join(', ');
-          addNote(row, `Matches several folio records (${numbers}). Merge or renumber those folio records first.`, 'problem');
+          addNote(row, `${value}: matches several folio records (${numbers}). Merge or renumber those folio records first.`, 'problem');
         } else if (matches.length === 1) {
           const folio = matches[0];
-          if (current && current.id === folio.id) {
-            linked += 1;
+          entered.add(folio.id);
+          if (folio.canvas_id === row.canvas.id) {
+            isLinked = true;
             addNote(row, `Linked to folio ${folio.number}.`, 'info');
           } else {
             row.isChanged = true;
-            if (folio.canvas_id && folio.canvas_id !== row.canvas.id) {
+            if (folio.canvas_id) {
               addNote(row, `Will move folio ${folio.number} here from ${canvasName(folio.canvas_id)}.`);
             } else {
               addNote(row, `Will link folio ${folio.number}.`);
             }
-            if (current) addNote(row, `Will unlink folio ${current.number}.`);
           }
           const details = folioDetails(folio);
           if (details) addNote(row, details, 'info');
           if (!hasLineRange(folio)) {
-            addNote(row, "This folio record has no line range.", 'warning');
+            addNote(row, `Folio ${folio.number} has no line range.`, 'warning');
           }
         } else if (!canCreate) {
           row.hasProblem = true;
@@ -199,9 +232,15 @@
           row.isChanged = true;
           addNote(row, `Will create a new folio record "${value}".`);
           addNote(row, "It will need a line range before the text can turn to this image.", 'warning');
-          if (current) addNote(row, `Will unlink folio ${current.number}.`);
         }
       }
+      for (const folio of current) {
+        if (!entered.has(folio.id)) {
+          row.isChanged = true;
+          addNote(row, `Will unlink folio ${folio.number}.`);
+        }
+      }
+      if (isLinked) linked += 1;
 
       if (row.labelCount > 1) {
         addNote(row, `The manifest label "${row.canvas.label}" appears on ${row.labelCount} images.`, 'info');
@@ -224,7 +263,7 @@
   function applyFilter() {
     const filter = filterEl.value;
     for (const row of rows) {
-      const isLinked = !!foliosByCanvas.get(row.canvas.id);
+      const isLinked = linkedFolios(row.canvas.id).length > 0;
       row.tr.hidden =
         (filter === 'linked' && !isLinked) ||
         (filter === 'unlinked' && isLinked) ||
@@ -236,7 +275,7 @@
   function buildRow(canvas, labelCounts) {
     const tr = document.createElement('tr');
     tr.id = `image-${canvas.index + 1}`;
-    const current = foliosByCanvas.get(canvas.id);
+    const current = linkedFolios(canvas.id);
 
     const position = document.createElement('td');
     position.className = 'canvas-position';
@@ -274,38 +313,12 @@
 
     const folioCell = document.createElement('td');
     folioCell.className = 'canvas-folio';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.setAttribute('list', 'canvas-folio-numbers');
-    input.setAttribute('aria-label', `Folio number for image ${canvas.index + 1}`);
-    const initial = current ? current.number : '';
-    input.value = submitted && canvas.id in submitted ? submitted[canvas.id] : initial;
-    if (submitted && input.value !== initial) dirty = true;
-    folioCell.appendChild(input);
-
-    // offer the folio number in the manifest label, when it has one
-    let suggestion = null;
-    const suggestedNumber = folioNumberFromLabel(canvas.label);
-    if (suggestedNumber) {
-      suggestion = document.createElement('button');
-      suggestion.type = 'button';
-      suggestion.className = 'canvas-suggestion';
-      suggestion.textContent = `Use ${suggestedNumber}`;
-      suggestion.title = `Use the folio number from the manifest label "${canvas.label}"`;
-      suggestion.addEventListener('click', () => {
-        input.value = suggestedNumber;
-        input.dispatchEvent(new Event('input'));
-        input.focus();
-      });
-      folioCell.appendChild(suggestion);
-    }
-    if (current) {
-      const link = document.createElement('a');
-      link.href = current.admin_url;
-      link.textContent = 'Edit folio record';
-      link.style.marginLeft = '0.5em';
-      folioCell.appendChild(link);
-    }
+    const entriesEl = document.createElement('div');
+    const addButton = document.createElement('button');
+    addButton.type = 'button';
+    addButton.className = 'canvas-add-folio';
+    addButton.textContent = 'Add another folio';
+    folioCell.append(entriesEl, addButton);
 
     const notesEl = document.createElement('td');
 
@@ -313,18 +326,71 @@
     const row = {
       canvas,
       tr,
-      input,
-      suggestion,
+      inputs: [],
+      entriesEl,
+      addButton,
+      suggestion: null,
       notesEl,
       labelCount: labelCounts.get(normalizeFolioLabel(canvas.label)) || 0,
       isChanged: false,
       hasProblem: false,
     };
+    addButton.addEventListener('click', () => {
+      addFolioInput(row).focus();
+      update();
+    });
+
+    const initial = current.map((folio) => folio.number);
+    const values = submitted && canvas.id in submitted ? submitted[canvas.id] : initial;
+    if (submitted && values.join() !== initial.join()) dirty = true;
+    (values.length ? values : ['']).forEach((value) => {
+      const input = addFolioInput(row);
+      input.value = value;
+      const folio = current.find((f) => f.number === value);
+      if (folio) {
+        const link = document.createElement('a');
+        link.href = folio.admin_url;
+        link.textContent = 'Edit folio record';
+        link.style.marginLeft = '0.5em';
+        input.parentElement.appendChild(link);
+      }
+    });
+
+    // offer the folio numbers in the manifest label, when it has any
+    const suggestedNumbers = folioNumbersFromLabel(canvas.label);
+    if (suggestedNumbers.length) {
+      const suggestion = document.createElement('button');
+      suggestion.type = 'button';
+      suggestion.className = 'canvas-suggestion';
+      suggestion.textContent = `Use ${suggestedNumbers.join(', ')}`;
+      suggestion.title = `Use the folio numbers from the manifest label "${canvas.label}"`;
+      suggestion.addEventListener('click', () => {
+        setRowFolios(row, suggestedNumbers);
+        dirty = true;
+        update();
+        row.inputs[0].focus();
+      });
+      row.inputs[0].parentElement.appendChild(suggestion);
+      row.suggestion = suggestion;
+    }
+    return row;
+  }
+
+  function addFolioInput(row) {
+    const entry = document.createElement('div');
+    entry.className = 'canvas-folio-entry';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.setAttribute('list', 'canvas-folio-numbers');
+    input.setAttribute('aria-label', `Folio number for image ${row.canvas.index + 1}`);
     input.addEventListener('input', () => {
       dirty = true;
       update();
     });
-    return row;
+    entry.appendChild(input);
+    row.entriesEl.appendChild(entry);
+    row.inputs.push(input);
+    return input;
   }
 
   function showNotices(canvases) {
@@ -398,9 +464,10 @@
   // from the manuscript's folio list), or #image-<position>
   function showLinkedRow() {
     let row = null;
+    let folio = null;
     const folioMatch = location.hash.match(/^#folio-(\d+)$/);
     if (folioMatch) {
-      const folio = folios.find((f) => String(f.id) === folioMatch[1]);
+      folio = folios.find((f) => String(f.id) === folioMatch[1]);
       row = folio && rows.find((r) => r.canvas.id === folio.canvas_id);
     } else if (/^#image-\d+$/.test(location.hash)) {
       row = rows.find((r) => `#${r.tr.id}` === location.hash);
@@ -408,18 +475,19 @@
     if (!row) return;
     row.tr.classList.add('is-target');
     row.tr.scrollIntoView({ block: 'center' });
-    row.input.focus({ preventScroll: true });
+    const input = folio && row.inputs.find((i) => i.value.trim() === folio.number);
+    (input || row.inputs[0]).focus({ preventScroll: true });
   }
 
   filterEl.addEventListener('change', applyFilter);
 
   // Larger view of an image, in a dialog over the page
   function openViewer(canvas) {
-    const folio = foliosByCanvas.get(canvas.id);
+    const numbers = linkedFolios(canvas.id).map((folio) => folio.number).join(', ');
     viewerTitle.textContent =
       `Image ${canvas.index + 1}` +
       (canvas.label ? ` · manifest label "${canvas.label}"` : '') +
-      (folio ? ` · linked to folio ${folio.number}` : '');
+      (numbers ? ` · linked to folio ${numbers}` : '');
     viewerFrame.classList.add('is-loading');
     viewerImage.removeAttribute('src');
     viewerImage.alt = `Image ${canvas.index + 1}`;
@@ -435,22 +503,23 @@
     if (event.target === viewer) viewer.close();
   });
 
-  // Same rules as the link_folio_canvases command: fill in an empty image
-  // whose recto/verso label appears once in the manifest and matches exactly
-  // one folio that isn't linked to an image or entered elsewhere
+  // Fill in an empty image whose label appears once in the manifest, with each
+  // recto/verso number in it that matches exactly one folio that isn't linked
+  // to an image or entered elsewhere
   fillButton.addEventListener('click', () => {
-    const entered = new Set(
-      rows.map((row) => row.input.value.trim()).filter(Boolean).map(folioKey),
-    );
+    const entered = new Set(rows.flatMap(rowEntries).map(({ key }) => key));
     let filled = 0;
     for (const row of rows) {
-      if (row.input.value.trim() || row.labelCount !== 1) continue;
-      const key = normalizeFolioLabel(row.canvas.label);
-      if (!RECTO_VERSO.test(key) || entered.has(key)) continue;
-      const matches = foliosByKey.get(key) || [];
-      if (matches.length !== 1 || matches[0].canvas_id) continue;
-      row.input.value = matches[0].number;
-      entered.add(key);
+      if (rowEntries(row).length || row.labelCount !== 1) continue;
+      const numbers = [];
+      for (const key of folioNumbersFromLabel(row.canvas.label).map(folioKey)) {
+        const matches = foliosByKey.get(key) || [];
+        if (entered.has(key) || matches.length !== 1 || matches[0].canvas_id) continue;
+        numbers.push(matches[0].number);
+        entered.add(key);
+      }
+      if (!numbers.length) continue;
+      setRowFolios(row, numbers);
       filled += 1;
     }
     if (filled) {
@@ -472,7 +541,7 @@
         index: row.canvas.index,
         label: row.canvas.label,
         image_id: row.canvas.image_id,
-        folio: row.input.value.trim(),
+        folios: rowEntries(row).map(({ value }) => value),
       })),
     );
     dirty = false;
