@@ -1,0 +1,77 @@
+/* Manuscript word cloud (templates/partials/manuscript_cloud.html).
+   Everything is scoped under .ms-cloud so it can't affect the rest of the site. */
+.ms-cloud {
+  --msc-bg: #eef1f4;
+  --msc-ink: #1c2631;
+  --msc-muted: #5a6876;
+  --msc-line: #d9e0e6;
+  --msc-hover: #e2e8ee;
+  --msc-italy: #b91c1c; /* lasfera-red */
+  --msc-italy-soft: #fbe5e5;
+  --msc-blue: #2f5d8a;
+  --msc-gold: #9a6a12;
+  --msc-font: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --msc-mono: ui-monospace, Menlo, Consolas, monospace;
+  margin: 0 0 2.5rem;
+  color: var(--msc-ink);
+}
+.ms-cloud__summary { color: var(--msc-muted); margin: 0 0 0.75rem; }
+
+/* 16:9 landscape frame, kept within the window height; scrolls sideways on phones */
+.ms-cloud__stage { overflow-x: auto; border-radius: 8px; }
+.ms-cloud__frame {
+  position: relative; width: 100%; min-width: 720px; aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 120px); min-height: 405px;
+  background: var(--msc-bg); border-radius: 8px; overflow: hidden;
+}
+.ms-cloud__frame svg { display: block; width: 100%; height: 100%; }
+
+.ms-word { cursor: pointer; outline: none; }
+.ms-word text { font-family: var(--msc-font); font-weight: 600; fill: var(--msc-c); }
+.ms-word__hl { fill: transparent; }
+.ms-word:hover .ms-word__hl, .ms-word:focus-visible .ms-word__hl { fill: var(--msc-hover); }
+.ms-word:focus-visible .ms-word__hl { stroke: var(--msc-ink); stroke-width: 1.5; }
+.ms-word.is-selected .ms-word__hl { fill: var(--msc-italy-soft); }
+.ms-word--it { --msc-c: var(--msc-italy); }
+.ms-word--eu { --msc-c: var(--msc-ink); }
+.ms-word--na { --msc-c: var(--msc-blue); }
+.ms-word--jp { --msc-c: var(--msc-gold); }
+
+.ms-cloud__legend {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center;
+  font-size: 0.8rem; color: var(--msc-muted); margin: 0.5rem 0 1.25rem;
+}
+.ms-cloud__legend i {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 4px; vertical-align: -1px;
+}
+
+.ms-cloud__detail { border-top: 1px solid var(--msc-line); padding-top: 1rem; }
+.ms-cloud__eyebrow {
+  font: 500 0.7rem var(--msc-mono); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--msc-muted); margin: 0;
+}
+.ms-cloud__place { font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin: 0.1rem 0; }
+.ms-cloud__meta { color: var(--msc-muted); margin: 0 0 1rem; }
+.ms-cloud__libs {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 0.5rem 2rem; align-items: start;
+}
+.ms-cloud__lib h6 {
+  font-size: 1rem; line-height: 1.3;
+  display: flex; justify-content: space-between; gap: 12px; font-weight: 600;
+  border-bottom: 1px solid var(--msc-line); padding-bottom: 4px; margin: 0 0 4px;
+}
+.ms-cloud__lib h6 span { font: 0.75rem var(--msc-mono); color: var(--msc-muted); padding-top: 3px; }
+.ms-cloud__lib ul { list-style: none; margin: 0 0 1rem; padding: 0; }
+.ms-cloud__lib a {
+  display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 8px; align-items: baseline;
+  padding: 3px 6px; border-radius: 4px; text-decoration: none; color: var(--msc-ink);
+}
+.ms-cloud__lib a:hover { background: var(--msc-hover); text-decoration: underline; }
+.ms-cloud__sig { font: 500 0.8rem var(--msc-mono); color: var(--msc-italy); }
+.ms-cloud__unmapped {
+  margin-top: 0.5rem; font-size: 0.85rem; color: var(--msc-muted);
+  text-decoration: underline; background: none; border: 0; cursor: pointer; padding: 0;
+}
+.ms-cloud button:focus-visible, .ms-cloud a:focus-visible { outline: 2px solid var(--msc-italy); outline-offset: 2px; }

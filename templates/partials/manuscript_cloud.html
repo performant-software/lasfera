@@ -1,0 +1,25 @@
+{% comment %}
+  Word cloud of manuscript holding cities. Needs `cloud_places` in context
+  (see manuscript/manuscript_cloud.py), plus static/css/manuscript-cloud.css,
+  d3 and static/js/manuscript-cloud.js loaded by the page.
+{% endcomment %}
+{% if cloud_places %}
+<section class="ms-cloud" aria-labelledby="ms-cloud-title">
+  <h4 id="ms-cloud-title" class="text-2xl font-semibold mb-2 text-gray-700">Where the manuscripts are</h4>
+  <p class="ms-cloud__summary"></p>
+  <div class="ms-cloud__stage">
+    <div class="ms-cloud__frame">
+      <svg role="img" aria-label="Word cloud of the cities that hold manuscripts of La sfera, each name sized by its number of manuscripts and placed in compass order"></svg>
+    </div>
+  </div>
+  <div class="ms-cloud__legend">
+    <span>Larger name = more manuscripts. Names keep their compass order (north, south, east, west), not true distances.</span>
+    <span><i style="background:var(--msc-italy)"></i>Italy &amp; Vatican</span>
+    <span><i style="background:var(--msc-ink)"></i>Rest of Europe</span>
+    <span><i style="background:var(--msc-blue)"></i>North America</span>
+    <span><i style="background:var(--msc-gold)"></i>Japan</span>
+  </div>
+  <div class="ms-cloud__detail" aria-live="polite"></div>
+</section>
+{{ cloud_places|json_script:"ms-cloud-data" }}
+{% endif %}
