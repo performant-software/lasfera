@@ -1,0 +1,7 @@
+{% load wagtailcore_tags %}
+<blockquote>
+    {% include_block value.text %}
+    {% if value.attribution %}
+        <footer>— {{ value.attribution }}</footer>
+    {% endif %}
+</blockquote>

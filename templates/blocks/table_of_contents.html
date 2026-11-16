@@ -1,0 +1,23 @@
+{# The list of links is added by the with_table_of_contents filter, in pages/templatetags/table_of_contents.py. #}
+{# in_margin is set when site_page.html shows this in the left margin, where it's always open. #}
+{% with title=value.title|default:"Table of Contents" %}
+<div class="toc-block toc-{{ value.style }} toc-{{ value.size }}{% if value.bold_main_headings %} toc-bold{% endif %}">
+{% if value.collapsible and not in_margin %}
+    <details class="group border-b border-gray-200 py-4">
+        <summary class="flex cursor-pointer items-center justify-between font-medium list-none">
+            <span class="text-xl font-semibold">{{ title }}</span>
+            <span class="transition group-open:rotate-180">
+                <svg fill="none" height="24" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="24"><path d="M19 9l-7 7-7-7"></path></svg>
+            </span>
+        </summary>
+        <nav class="toc mt-4" aria-label="{{ title }}" data-toc data-toc-depth="{{ value.depth }}"{% if value.numbered %} data-toc-numbered{% endif %}></nav>
+    </details>
+{% else %}
+    <nav class="toc" aria-label="{{ title }}" data-toc data-toc-depth="{{ value.depth }}"{% if value.numbered %} data-toc-numbered{% endif %}>
+        {% if value.title %}
+            <p class="toc-title">{{ value.title }}</p>
+        {% endif %}
+    </nav>
+{% endif %}
+</div>
+{% endwith %}

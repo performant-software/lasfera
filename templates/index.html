@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static wagtailcore_tags wagtailimages_tags %}
+{% load static wagtailcore_tags wagtailimages_tags table_of_contents %}
 
 {% block title %}
   Home -  La Sfera
@@ -63,7 +63,7 @@
         {% if intro %}
           <h2 class="text-3xl font-bold text-gray-900 mb-6 max-w-3xl mx-auto">{{ intro.title }}</h2>
           <div class="text-xl text-gray-600 max-w-3xl mx-auto">
-              {% include_block intro.body %}
+              {% filter with_table_of_contents %}{% include_block intro.body %}{% endfilter %}
           </div>
         {% else %}
           <h2 class="text-3xl font-bold text-gray-900 mb-6">Welcome to La Sfera!</h2>

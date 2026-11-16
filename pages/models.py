@@ -46,14 +46,95 @@ class AccordionBlock(blocks.StructBlock):
         template = "blocks/accordion.html"
         icon = "arrow-down"
         label = "Accordion"
-        
+
+
+class QuoteBlock(blocks.StructBlock):
+    text = blocks.RichTextBlock(
+        features=[
+            "bold",
+            "italic",
+            "superscript",
+            "subscript",
+            "strikethrough",
+            "link",
+            "document-link",
+        ]
+    )
+    attribution = blocks.CharBlock(
+        required=False,
+        help_text="Optional: who said or wrote it, and where, shown beneath the "
+        "quote (e.g. Goro Dati, History of Florence)",
+    )
+
+    class Meta:
+        template = "blocks/quote.html"
+        icon = "openquote"
+        label = "Quote"
+
+
+class TableOfContentsBlock(blocks.StructBlock):
+    """
+    Links to the headings on the page, which are filled in when the page is
+    rendered (see pages/templatetags/table_of_contents.py)
+    """
+
+    title = blocks.CharBlock(required=False, default="Table of Contents")
+    depth = blocks.ChoiceBlock(
+        choices=[
+            ("2", "Main headings only"),
+            ("3", "Main headings and subheadings"),
+            ("4", "All headings"),
+        ],
+        default="3",
+        help_text="Which levels of heading to list",
+    )
+    collapsible = blocks.BooleanBlock(
+        required=False,
+        default=True,
+        help_text="Hide the list until the reader opens it, like an accordion",
+    )
+    style = blocks.ChoiceBlock(
+        choices=[
+            ("simple", "Simple list"),
+            ("boxed", "In a shaded box"),
+            ("margin", "In the left margin"),
+        ],
+        default="simple",
+        help_text="How the list is displayed. \"In the left margin\" keeps the "
+        "list beside the text as the reader scrolls on wide screens; on narrower "
+        "screens, or pages with a sidebar, it's shown within the text like a "
+        "simple list.",
+    )
+    size = blocks.ChoiceBlock(
+        choices=[("normal", "Normal"), ("small", "Small")],
+        default="normal",
+        label="Text size",
+    )
+    numbered = blocks.BooleanBlock(
+        required=False,
+        default=False,
+        help_text="Number the headings: 1, 1.1, 1.2, 2…",
+    )
+    bold_main_headings = blocks.BooleanBlock(
+        required=False,
+        default=True,
+        help_text="Show the main headings in bold",
+    )
+
+    class Meta:
+        template = "blocks/table_of_contents.html"
+        icon = "list-ol"
+        label = "Table of contents"
+
+
 class CommonContentBlock(blocks.StreamBlock):
     paragraph = blocks.RichTextBlock(icon="pilcrow")
     heading = blocks.CharBlock(icon="title")
     image = ImageBlock()
     video = EmbedBlock(icon="media", max_width=800, max_height=400)
-    quote = blocks.BlockQuoteBlock(icon="openquote") #
-    accordion = AccordionBlock()                   #
+    quote = QuoteBlock()
+    accordion = AccordionBlock()
+    table_of_contents = TableOfContentsBlock()
 
 class AboutPage(RoutablePageMixin, Page):
     body = StreamField(CommonContentBlock(), use_json_field=True, blank=True)
@@ -72,6 +153,21 @@ class SitePage(Page):
         FieldPanel("body", classname="full"),
     ]
     template = "pages/site_page.html"
+
+    def get_context(self, request, *args, **kwargs):
+        context = super().get_context(request, *args, **kwargs)
+        # The first table of contents set to go in the left margin, which
+        # site_page.html puts in a column beside the text on wide screens
+        context["margin_toc"] = next(
+            (
+                block
+                for block in self.body
+                if block.block_type == "table_of_contents"
+                and block.value["style"] == "margin"
+            ),
+            None,
+        )
+        return context
 
 
 class NavCardBlock(blocks.StructBlock):

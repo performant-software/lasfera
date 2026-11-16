@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load wagtailcore_tags %}
+{% load wagtailcore_tags table_of_contents %}
 
 {% block title %}{{ page.title }} - La Sfera{% endblock title %}
 
@@ -8,11 +8,22 @@
     <!-- max-w-none removes the 2/3 width restriction -->
     <div class="px-4 md:px-10 mx-auto w-full max-w-none"> 
         <article class="prose prose-lg max-w-none mx-auto flow-root">
-            {% for block in page.body %}
-                <div class="{% if block.block_type != 'paragraph' %}my-8 {% endif %}block-{{ block.block_type }}{% if block.block_type == 'heading' or block.block_type == 'video' or block.block_type == 'accordion' %} clear-both{% endif %}">
-                    {% include_block block %}
+            {% filter with_table_of_contents %}
+            <div{% if margin_toc %} class="with-margin-toc"{% endif %}>
+                {% if margin_toc %}
+                    <aside class="toc-margin-column">
+                        {% include_block margin_toc with in_margin=True %}
+                    </aside>
+                {% endif %}
+                <div>
+                    {% for block in page.body %}
+                        <div class="{% if block.block_type != 'paragraph' %}my-8 {% endif %}block-{{ block.block_type }}{% if block.block_type == 'heading' or block.block_type == 'video' or block.block_type == 'accordion' or block.block_type == 'table_of_contents' %} clear-both{% endif %}{% if block.id == margin_toc.id %} toc-margin-inline{% endif %}">
+                            {% include_block block %}
+                        </div>
+                    {% endfor %}
                 </div>
-            {% endfor %}
+            </div>
+            {% endfilter %}
         </article>
     </div>
 </main>
