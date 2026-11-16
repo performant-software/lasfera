@@ -183,3 +183,11 @@ note[data-notation] {
 .prose.max-w-none {
   max-width: none;
 }
+
+/* tighter spacing between list items than Tailwind Typography's default */
+.prose li,
+.prose li > ul,
+.prose li > ol {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
