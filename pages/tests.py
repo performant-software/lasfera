@@ -8,10 +8,20 @@ from wagtail.rich_text import expand_db_html
 
 
 class ImageFormatsTest(SimpleTestCase):
-    def test_small_formats_are_offered(self):
+    def test_extra_formats_are_offered(self):
         names = [image_format.name for image_format in get_image_formats()]
         self.assertEqual(
-            names, ["fullwidth", "left", "right", "left_small", "right_small"]
+            names,
+            [
+                "fullwidth",
+                "left",
+                "right",
+                "left_small",
+                "right_small",
+                "left_caption",
+                "right_caption",
+                "fullwidth_caption",
+            ],
         )
 
     def test_small_formats_fit_within_300px(self):
@@ -35,3 +45,24 @@ class SmallImageFormatRenderingTest(TestCase):
         self.assertIn('class="richtext-image right"', html)
         self.assertIn('width="300"', html)
         self.assertIn('height="225"', html)
+
+
+class CaptionedImageFormatRenderingTest(TestCase):
+    def test_right_caption_shows_alt_text_as_caption(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            # a 640 x 480 test image
+            image = Image.objects.create(title="Ship", file=get_test_image_file())
+            html = expand_db_html(
+                f'<embed embedtype="image" id="{image.pk}" format="right_caption" '
+                'alt="A ship &amp; its &lt;crew&gt;"/>'
+            )
+
+        self.assertIn(
+            '<figure class="richtext-figure right" style="width: 500px">', html
+        )
+        self.assertIn('class="richtext-image"', html)
+        self.assertIn(
+            "<figcaption>A ship &amp; its &lt;crew&gt;</figcaption></figure>", html
+        )

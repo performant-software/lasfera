@@ -191,3 +191,30 @@ note[data-notation] {
   margin-top: 0.25em;
   margin-bottom: 0.25em;
 }
+
+/* captioned images in rich text (see pages/image_formats.py); the figure's
+   width is set to the image's, so the caption wraps beneath it */
+.prose .richtext-figure {
+  max-width: 100%;
+  margin: 0 auto 1rem;
+}
+.prose .richtext-figure.left {
+  float: left;
+  margin: 0 1.5rem 1rem 0;
+}
+.prose .richtext-figure.right {
+  float: right;
+  margin: 0 0 1rem 1.5rem;
+}
+.prose .richtext-figure .richtext-image {
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+.prose .richtext-figure figcaption {
+  margin-top: 0.75rem;
+  text-align: center;
+  font-size: 0.875rem;
+  font-style: italic;
+  color: rgb(107 114 128);
+}
