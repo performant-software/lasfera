@@ -1,7 +1,6 @@
 {% load static %}
-{% load wagtailcore_tags %}
 
-<nav class="sticky top-0 z-[2000] w-full bg-gray-800 text-white" x-data="{ isOpen: false, resourcesOpen: false }">
+<nav class="sticky top-0 z-[2000] w-full bg-gray-800 text-white" x-data="{ isOpen: false }">
     <div class="max-w-7xl mx-auto px-4">
         <div class="flex justify-between h-16">
             <div class="flex items-center">
@@ -13,42 +12,39 @@
 
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center space-x-4">
-                <a href="{% slugurl 'introduction' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Introduction</a>
-                <a href="{% url 'manuscript_stanzas' siglum='Urb1' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Edition</a>
-                <a href="{% url 'toponyms' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gazetteer</a>
-                <a href="{% url 'manuscripts' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Manuscripts</a>
-                <a href="{% slugurl 'gallery' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gallery</a>
-
-                <!-- Resources Dropdown -->
-                <div class="relative" x-data="{ open: false }" @click.away="open = false">
-                    <button 
-                        @click="open = !open"
-                        class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors inline-flex items-center"
-                    >
-                        Resources
-                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                    </button>
-                    <div 
-                        x-show="open"
-                        x-transition:enter="transition ease-out duration-100"
-                        x-transition:enter-start="transform opacity-0 scale-95"
-                        x-transition:enter-end="transform opacity-100 scale-100"
-                        x-transition:leave="transition ease-in duration-75"
-                        x-transition:leave-start="transform opacity-100 scale-100"
-                        x-transition:leave-end="transform opacity-0 scale-95"
-                        class="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50"
-                    >
-                        <div class="py-1">
-                            <a href="{% slugurl 'education' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">La Sfera in the Classroom</a>
-                            <a href="{% slugurl 'data' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Data</a>
-                            <a href="{% slugurl 'talks-presentations' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Talks & Presentations</a>
+                {% for item in settings.pages.NavigationMenu.items %}
+                    {% if item.block_type == "dropdown" %}
+                        <div class="relative" x-data="{ open: false }" @click.away="open = false">
+                            <button
+                                @click="open = !open"
+                                class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors inline-flex items-center"
+                            >
+                                {{ item.value.label }}
+                                <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
+                            <div
+                                x-show="open"
+                                x-transition:enter="transition ease-out duration-100"
+                                x-transition:enter-start="transform opacity-0 scale-95"
+                                x-transition:enter-end="transform opacity-100 scale-100"
+                                x-transition:leave="transition ease-in duration-75"
+                                x-transition:leave-start="transform opacity-100 scale-100"
+                                x-transition:leave-end="transform opacity-0 scale-95"
+                                class="absolute left-0 mt-2 w-56 bg-white rounded-md shadow-lg z-50"
+                            >
+                                <div class="py-1">
+                                    {% for link in item.value.links %}
+                                        <a href="{{ link.url }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{ link.label }}</a>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
-
-                <a href="{% slugurl 'about' %}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
+                    {% else %}
+                        <a href="{{ item.value.url }}" class="px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">{{ item.value.label }}</a>
+                    {% endif %}
+                {% endfor %}
             </div>
 
             <!-- Mobile menu button -->
@@ -75,40 +71,37 @@
         x-transition:leave-end="opacity-0 scale-95"
         class="md:hidden">
         <div class="px-2 pt-2 pb-3 space-y-1">
-            <a href="{% slugurl 'introduction' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Introduction</a>
-            <a href="{% url 'manuscript_stanzas' siglum='Urb1' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Edition</a>
-            <a href="{% url 'toponyms' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gazetteer</a>
-            <a href="{% url 'manuscripts' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Manuscripts</a>
-            <a href="{% slugurl 'gallery' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">Gallery</a>
-
-            <!-- Mobile Resources Dropdown -->
-            <div class="relative">
-                <button 
-                    @click="resourcesOpen = !resourcesOpen"
-                    class="w-full text-left px-3 py-2 rounded-md hover:bg-gray-700 transition-colors inline-flex items-center justify-between"
-                >
-                    Resources
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
-                </button>
-                <div 
-                    x-show="resourcesOpen"
-                    x-transition:enter="transition ease-out duration-100"
-                    x-transition:enter-start="opacity-0"
-                    x-transition:enter-end="opacity-100"
-                    x-transition:leave="transition ease-in duration-75"
-                    x-transition:leave-start="opacity-100"
-                    x-transition:leave-end="opacity-0"
-                    class="pl-4"
-                >
-                    <a href="{% slugurl 'education' %}" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">La Sfera in the Classroom</a>
-                    <a href="{% slugurl 'data' %}" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">Data</a>
-                    <a href="{% slugurl 'talks-presentations' %}" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">Talks & Presentations</a>
-                </div>
-            </div>
-
-            <a href="{% slugurl 'about' %}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">About</a>
+            {% for item in settings.pages.NavigationMenu.items %}
+                {% if item.block_type == "dropdown" %}
+                    <div class="relative" x-data="{ open: false }">
+                        <button
+                            @click="open = !open"
+                            class="w-full text-left px-3 py-2 rounded-md hover:bg-gray-700 transition-colors inline-flex items-center justify-between"
+                        >
+                            {{ item.value.label }}
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+                        <div
+                            x-show="open"
+                            x-transition:enter="transition ease-out duration-100"
+                            x-transition:enter-start="opacity-0"
+                            x-transition:enter-end="opacity-100"
+                            x-transition:leave="transition ease-in duration-75"
+                            x-transition:leave-start="opacity-100"
+                            x-transition:leave-end="opacity-0"
+                            class="pl-4"
+                        >
+                            {% for link in item.value.links %}
+                                <a href="{{ link.url }}" class="block px-3 py-2 text-sm hover:bg-gray-700 transition-colors">{{ link.label }}</a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% else %}
+                    <a href="{{ item.value.url }}" class="block px-3 py-2 rounded-md hover:bg-gray-700 transition-colors">{{ item.value.label }}</a>
+                {% endif %}
+            {% endfor %}
         </div>
     </div>
 </nav>

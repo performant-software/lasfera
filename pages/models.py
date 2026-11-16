@@ -1,8 +1,11 @@
 from django.core.files.storage import default_storage
 from django.db import models
 from wagtail import blocks
+from django.core.exceptions import ValidationError
 from wagtail.admin.panels import FieldPanel
+from wagtail.blocks.struct_block import StructBlockValidationError
 from wagtail.contrib.routable_page.models import RoutablePageMixin
+from wagtail.contrib.settings.models import BaseGenericSetting, register_setting
 from wagtail.documents.blocks import DocumentChooserBlock
 from wagtail.embeds.blocks import EmbedBlock
 from wagtail.fields import RichTextField, StreamField
@@ -85,6 +88,76 @@ class NavCardBlock(blocks.StructBlock):
     class Meta:
         icon = "link"
         label = "Navigation Card"
+
+
+class NavLinkValue(blocks.StructValue):
+    def url(self):
+        page = self.get("page")
+        return page.url if page else self.get("link_url")
+
+
+class NavLinkBlock(blocks.StructBlock):
+    """A navigation menu link, to either a CMS page or any other URL"""
+
+    label = blocks.CharBlock(required=True, help_text="The text shown in the menu")
+    page = blocks.PageChooserBlock(
+        required=False, help_text="Link to a page created in the CMS..."
+    )
+    link_url = blocks.CharBlock(
+        required=False,
+        label="URL",
+        help_text="...or to any other address, e.g. /manuscripts/ for a page on "
+        "this site or https://example.com for another site",
+    )
+
+    def clean(self, value):
+        value = super().clean(value)
+        if bool(value.get("page")) == bool(value.get("link_url")):
+            message = "Choose a page or enter a URL (but not both)."
+            raise StructBlockValidationError(
+                block_errors={
+                    "page": ValidationError(message),
+                    "link_url": ValidationError(message),
+                }
+            )
+        return value
+
+    class Meta:
+        icon = "link"
+        label = "Link"
+        value_class = NavLinkValue
+
+
+class NavDropdownBlock(blocks.StructBlock):
+    """A navigation menu heading that opens a list of links"""
+
+    label = blocks.CharBlock(required=True, help_text="The text shown in the menu")
+    links = blocks.ListBlock(NavLinkBlock(), min_num=1)
+
+    class Meta:
+        icon = "list-ul"
+        label = "Dropdown"
+
+
+@register_setting(icon="list-ul")
+class NavigationMenu(BaseGenericSetting):
+    """The site's top navigation bar, editable under Settings in the CMS"""
+
+    items = StreamField(
+        [
+            ("link", NavLinkBlock()),
+            ("dropdown", NavDropdownBlock()),
+        ],
+        use_json_field=True,
+        blank=True,
+        help_text="The items in the navigation bar, from left to right. Use a "
+        "dropdown to group several links under one heading.",
+    )
+
+    panels = [FieldPanel("items")]
+
+    class Meta:
+        verbose_name = "Navigation menu"
 
 
 @register_snippet
