@@ -99,6 +99,13 @@ note[data-notation] {
   transform: rotate(180deg);
 }
 
+/* the navigation menu's dropdowns (see templates/partials/navigation.html)
+   open from their button's right edge, since the menu sits at the right of
+   the navbar and a dropdown opening rightwards would run off narrow screens */
+.nav-dropdown {
+  right: 0;
+}
+
 /* 
 [data-notation]:hover::before {
     content: attr(data-notation);
@@ -152,13 +159,14 @@ note[data-notation] {
     0 2px 4px -2px rgb(0 0 0 / 0.1);
   border: 1px solid rgb(209 213 219);
 }
+/* flush with the edge of the text, like captioned images below */
 .prose .richtext-image.right {
   float: right;
-  margin: 0rem 1rem 1rem;
+  margin: 0 0 1rem 1.5rem;
 }
 .prose .richtext-image.left {
   float: left;
-  margin: 0rem 1rem 1rem;
+  margin: 0 1.5rem 1rem 0;
 }
 
 /* heading blocks in streamfields */
