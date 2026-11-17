@@ -74,7 +74,10 @@ def with_table_of_contents(html):
         headings.append((heading_level(element), text, element["id"]))
 
     for toc in soup.select("[data-toc]"):
-        depth = int(toc.get("data-toc-depth", 3))
+        try:
+            depth = int(toc.get("data-toc-depth"))
+        except (TypeError, ValueError):
+            depth = 3
         list_tag = "ol" if toc.has_attr("data-toc-numbered") else "ul"
         toc.append(
             nested_list(soup, [h for h in headings if h[0] <= depth], list_tag)

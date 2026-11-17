@@ -1,0 +1,17 @@
+{% extends "wagtailcore/shared/block_preview.html" %}
+{% load wagtailcore_tags table_of_contents %}
+{# The table of contents lists the page's headings, so its preview adds some to list #}
+
+{% block content %}
+    <article class="prose prose-lg max-w-none p-6">
+        {% filter with_table_of_contents %}
+            <div class="block-table_of_contents">
+                {% include_block bound_block %}
+            </div>
+            <div class="block-heading">Book I: The heavens</div>
+            <h3>The spheres</h3>
+            <h3>The zodiac</h3>
+            <div class="block-heading">Book II: The lands and seas</div>
+        {% endfilter %}
+    </article>
+{% endblock %}

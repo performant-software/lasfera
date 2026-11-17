@@ -357,3 +357,135 @@ note[data-notation] {
     font-size: 1.1rem;
   }
 }
+
+/* image + text (see templates/blocks/image_text.html): when the block is
+   wide enough the image floats beside the text; the block contains the
+   float, so the next block always starts below both. The layout follows the
+   block's own width rather than the screen's, so it also works in narrower
+   columns and in the CMS's block previews. */
+.prose .image-text {
+  display: flow-root;
+  clear: both;
+  container-type: inline-size;
+}
+.prose .image-text figure {
+  margin: 0 0 1.5rem;
+}
+.prose .image-text img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+.prose .image-text figure + * {
+  margin-top: 0;
+}
+@container (min-width: 600px) {
+  .prose .image-text-left figure {
+    float: left;
+    margin: 0.3rem 2rem 1rem 0;
+  }
+  .prose .image-text-right figure {
+    float: right;
+    margin: 0.3rem 0 1rem 2rem;
+  }
+  .prose .image-text-third figure {
+    width: 33%;
+  }
+  .prose .image-text-half figure {
+    width: 50%;
+  }
+}
+
+/* image row (see templates/blocks/image_row.html): one image per line in a
+   narrow column, such as on a phone, two in a medium one, and up to four in
+   a wide one */
+.prose .image-row-container {
+  clear: both;
+  container-type: inline-size;
+}
+.prose .image-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+@container (min-width: 560px) {
+  .prose .image-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (min-width: 900px) {
+  .prose .image-row {
+    grid-template-columns: repeat(var(--image-row-columns, 3), minmax(0, 1fr));
+  }
+}
+.prose .image-row figure,
+.prose .image-carousel figure {
+  margin: 0;
+}
+.prose .image-row img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+
+/* image row shown as a carousel: every slide shares one grid cell, and the
+   ones not showing are hidden */
+.prose .image-carousel {
+  clear: both;
+}
+.prose .image-carousel-stage {
+  display: grid;
+}
+.prose .image-carousel-stage > figure {
+  grid-area: 1 / 1;
+}
+.prose .image-carousel-stage > figure.is-hidden {
+  visibility: hidden;
+}
+.prose .image-carousel img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 70vh;
+  height: auto;
+  margin: 0 auto;
+}
+.prose .image-carousel-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  color: rgb(107 114 128);
+  font-variant-numeric: tabular-nums;
+}
+.prose .image-carousel-controls button {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid rgb(209 213 219);
+  border-radius: 9999px;
+  background: white;
+  color: rgb(31 41 55);
+}
+.prose .image-carousel-controls button:hover {
+  background: rgb(243 244 246);
+}
+.prose .image-carousel-controls button:focus-visible {
+  outline: 2px solid rgb(30 41 59);
+  outline-offset: 2px;
+}
+
+/* divider (see templates/blocks/divider.html): what follows starts below any
+   floated image above it */
+.prose .content-divider {
+  clear: both;
+}
+.prose .content-divider hr {
+  margin: 0.5rem 0;
+}
