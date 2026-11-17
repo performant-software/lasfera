@@ -1,3 +1,4 @@
+import importlib
 import tempfile
 
 from django.contrib.auth import get_user_model
@@ -7,6 +8,7 @@ from django.urls import reverse
 from wagtail.images.formats import get_image_format, get_image_formats
 from wagtail.images.models import Image
 from wagtail.images.tests.utils import get_test_image_file
+from wagtail.models import Site
 from wagtail.rich_text import expand_db_html
 
 from pages.image_format_form import ImageFormatForm
@@ -16,6 +18,8 @@ from pages.models import (
     DividerBlock,
     ImageRowBlock,
     ImageTextBlock,
+    NavigationMenu,
+    SitePage,
 )
 from pages.templatetags.table_of_contents import with_table_of_contents
 
@@ -293,3 +297,71 @@ class PagesImageChooserTest(TestCase):
             },
         )
         self.assertEqual(response.json()["result"]["format"], "right_small")
+
+
+gazetteer_help_migration = importlib.import_module(
+    "pages.migrations.0017_gazetteer_help_page"
+)
+
+
+class GazetteerHelpPageTest(TestCase):
+    """Migration 0017 moves the gazetteer's help into a page in its own menu"""
+
+    def test_help_page_is_published_at_the_top_of_the_site(self):
+        page = SitePage.objects.get(slug="how-to-use-the-gazetteer")
+        self.assertTrue(page.live)
+        self.assertEqual(page.get_parent().pk, Site.objects.get().root_page_id)
+        html = self.client.get(page.url).content.decode()
+        self.assertIn("How to use the gazetteer", html)
+        self.assertIn("<b>angolo</b> &gt;&gt; <b>angollo</b>", html)
+
+    def test_gazetteer_and_help_page_share_a_dropdown(self):
+        page = SitePage.objects.get(slug="how-to-use-the-gazetteer")
+        dropdown = next(
+            item.value
+            for item in NavigationMenu.load().items
+            if item.value["label"] == "Gazetteer"
+        )
+        self.assertEqual(
+            [(link["label"], link.url()) for link in dropdown["links"]],
+            [("Gazetteer", "/toponyms/"), ("How to use the gazetteer", page.url)],
+        )
+
+    def test_gazetteer_page_no_longer_has_the_help(self):
+        html = self.client.get(reverse("toponyms")).content.decode()
+        self.assertNotIn("About the gazetteer", html)
+
+    def test_next_child_path(self):
+        next_child_path = gazetteer_help_migration.next_child_path
+        self.assertEqual(next_child_path("00010004", "000100040004"), "000100040005")
+        self.assertEqual(next_child_path("00010004", "00010004000Z"), "000100040010")
+        self.assertEqual(next_child_path("00010004", None), "000100040001")
+
+    def test_menu_changes_can_be_undone(self):
+        items = [
+            {
+                "type": "link",
+                "id": "a",
+                "value": {"label": "About", "page": 3, "link_url": ""},
+            },
+            {
+                "type": "link",
+                "id": "b",
+                "value": {"label": "Gazetteer", "page": None, "link_url": "/toponyms/"},
+            },
+        ]
+        dropdown = gazetteer_help_migration.gazetteer_dropdown(items, "/toponyms/", 99)
+        self.assertEqual(dropdown[1]["type"], "dropdown")
+        self.assertEqual(gazetteer_help_migration.gazetteer_link(dropdown, 99), items)
+
+    def test_menu_without_a_gazetteer_link_is_left_alone(self):
+        items = [
+            {
+                "type": "link",
+                "id": "a",
+                "value": {"label": "About", "page": 3, "link_url": ""},
+            }
+        ]
+        self.assertIsNone(
+            gazetteer_help_migration.gazetteer_dropdown(items, "/toponyms/", 99)
+        )
