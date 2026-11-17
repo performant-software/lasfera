@@ -1,12 +1,16 @@
 import tempfile
 
+from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
 from wagtail.images.formats import get_image_format, get_image_formats
 from wagtail.images.models import Image
 from wagtail.images.tests.utils import get_test_image_file
 from wagtail.rich_text import expand_db_html
 
+from pages.image_format_form import ImageFormatForm
+from pages.image_formats import FORMAT_CHOICES
 from pages.models import (
     CommonContentBlock,
     DividerBlock,
@@ -17,11 +21,13 @@ from pages.templatetags.table_of_contents import with_table_of_contents
 
 
 class ImageFormatsTest(SimpleTestCase):
-    def test_extra_formats_are_offered(self):
-        names = [image_format.name for image_format in get_image_formats()]
-        self.assertEqual(
-            names,
-            [
+    def test_every_combination_of_choices_is_a_format(self):
+        names = {image_format.name for image_format in get_image_formats()}
+        self.assertEqual(len(FORMAT_CHOICES), 14)
+        self.assertLessEqual(set(FORMAT_CHOICES), names)
+        # including the names already used in existing content
+        self.assertLessEqual(
+            {
                 "fullwidth",
                 "left",
                 "right",
@@ -30,8 +36,20 @@ class ImageFormatsTest(SimpleTestCase):
                 "left_caption",
                 "right_caption",
                 "fullwidth_caption",
-            ],
+            },
+            set(FORMAT_CHOICES),
         )
+
+    def test_floated_sizes_fit_within_a_square(self):
+        for name, spec in [
+            ("left_small", "max-300x300"),
+            ("right", "max-500x500"),
+            ("left_caption", "max-500x500"),
+            ("right_large_caption", "max-700x700"),
+            ("fullwidth", "width-800"),
+        ]:
+            with self.subTest(format=name):
+                self.assertEqual(get_image_format(name).filter_spec, spec)
 
     def test_small_formats_fit_within_300px(self):
         for name, side in [("left_small", "left"), ("right_small", "right")]:
@@ -215,3 +233,63 @@ class BlockMenuTest(TestCase):
             Image.objects.create(title=f"Map {n}", file=get_test_image_file())
         self.render_previews()
 
+
+class ImageFormatFormTest(SimpleTestCase):
+    def form(self, **data):
+        return ImageFormatForm(
+            {f"image-chooser-insertion-{key}": value for key, value in data.items()},
+            prefix="image-chooser-insertion",
+        )
+
+    def test_combines_the_choices_into_a_format(self):
+        form = self.form(position="left", size="large", caption="on", alt_text="Map")
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["format"], "left_large_caption")
+
+    def test_full_width_has_one_size(self):
+        form = self.form(position="fullwidth", size="small", alt_text="Map")
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["format"], "fullwidth")
+
+    def test_editing_an_image_starts_from_its_format(self):
+        form = ImageFormatForm(initial={"format": "right_small_caption"})
+        self.assertEqual(form.initial["position"], "right")
+        self.assertEqual(form.initial["size"], "small")
+        self.assertTrue(form.initial["caption"])
+
+    def test_decorative_image_cannot_have_a_caption(self):
+        form = self.form(
+            position="left", size="medium", caption="on", image_is_decorative="on"
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("caption", form.errors)
+
+
+class PagesImageChooserTest(TestCase):
+    """Wagtail's image chooser asks for the position, size and caption"""
+
+    def setUp(self):
+        media_root = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(override_settings(MEDIA_ROOT=media_root))
+        self.image = Image.objects.create(title="Ship", file=get_test_image_file())
+        self.client.force_login(
+            get_user_model().objects.create_superuser("editor", "", None)
+        )
+        self.url = reverse("wagtailimages_chooser:select_format", args=[self.image.pk])
+
+    def test_shows_the_three_choices(self):
+        html = self.client.get(self.url).json()["html"]
+        for field in ("position", "size", "caption"):
+            self.assertIn(f'name="image-chooser-insertion-{field}"', html)
+        self.assertNotIn('name="image-chooser-insertion-format"', html)
+
+    def test_inserts_the_combined_format(self):
+        response = self.client.post(
+            self.url,
+            {
+                "image-chooser-insertion-position": "right",
+                "image-chooser-insertion-size": "small",
+                "image-chooser-insertion-alt_text": "A ship",
+            },
+        )
+        self.assertEqual(response.json()["result"]["format"], "right_small")
