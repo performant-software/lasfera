@@ -198,6 +198,9 @@ note[data-notation] {
 .prose blockquote p:last-of-type::after {
   content: none;
 }
+.prose blockquote :has(+ footer) {
+  margin-bottom: 0;
+}
 .prose blockquote footer {
   margin-top: 0.5rem;
   font-size: 0.875em;
