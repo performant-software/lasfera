@@ -99,6 +99,13 @@ note[data-notation] {
   transform: rotate(180deg);
 }
 
+/* the navigation menu's dropdowns (see templates/partials/navigation.html)
+   open from their button's right edge, since the menu sits at the right of
+   the navbar and a dropdown opening rightwards would run off narrow screens */
+.nav-dropdown {
+  right: 0;
+}
+
 /* 
 [data-notation]:hover::before {
     content: attr(data-notation);
@@ -152,13 +159,14 @@ note[data-notation] {
     0 2px 4px -2px rgb(0 0 0 / 0.1);
   border: 1px solid rgb(209 213 219);
 }
+/* flush with the edge of the text, like captioned images below */
 .prose .richtext-image.right {
   float: right;
-  margin: 0rem 1rem 1rem;
+  margin: 0 0 1rem 1.5rem;
 }
 .prose .richtext-image.left {
   float: left;
-  margin: 0rem 1rem 1rem;
+  margin: 0 1.5rem 1rem 0;
 }
 
 /* heading blocks in streamfields */
@@ -182,4 +190,313 @@ note[data-notation] {
    max-w-none (e.g. the manuscripts page introduction) */
 .prose.max-w-none {
   max-width: none;
+}
+
+/* tighter spacing between list items than Tailwind Typography's default */
+.prose li,
+.prose li > ul,
+.prose li > ol {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+/* quotes: no automatic quotation marks around the text, and the
+   attribution (see templates/blocks/quote.html) set apart below it */
+.prose blockquote p:first-of-type::before,
+.prose blockquote p:last-of-type::after {
+  content: none;
+}
+.prose blockquote :has(+ footer) {
+  margin-bottom: 0;
+}
+.prose blockquote footer {
+  margin-top: 0.5rem;
+  font-size: 0.875em;
+  font-style: normal;
+  color: rgb(107 114 128);
+}
+
+/* captioned images in rich text (see pages/image_formats.py); the figure's
+   width is set to the image's, so the caption wraps beneath it */
+.prose .richtext-figure {
+  max-width: 100%;
+  margin: 0 auto 1rem;
+}
+.prose .richtext-figure.left {
+  float: left;
+  margin: 0 1.5rem 1rem 0;
+}
+.prose .richtext-figure.right {
+  float: right;
+  margin: 0 0 1rem 1.5rem;
+}
+.prose .richtext-figure .richtext-image {
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+.prose .richtext-figure figcaption {
+  margin-top: 0.75rem;
+  text-align: center;
+  font-size: 0.875rem;
+  font-style: italic;
+  color: rgb(107 114 128);
+}
+
+/* leave room for the sticky navbar when jumping to a heading from the
+   table of contents (see pages/templatetags/table_of_contents.py) */
+.prose [id] {
+  scroll-margin-top: 6rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* table of contents (see templates/blocks/table_of_contents.html): no
+   bullets, subheadings indented beside a thin rule, and the editor's
+   choices of style (toc-simple, toc-boxed, toc-margin), text size
+   (toc-normal, toc-small), numbering and bold main headings (toc-bold) */
+.prose .toc ul,
+.prose .toc ol {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+  font-size: 0.95em;
+}
+.prose .toc li {
+  margin: 0.35em 0;
+  padding-left: 0;
+}
+.prose .toc li > ul,
+.prose .toc li > ol {
+  margin: 0.35em 0 0.6em 0.2em;
+  padding-left: 1em;
+  border-left: 1px solid rgb(229 231 235);
+  font-size: 1em;
+}
+.prose .toc-bold .toc > ul > li > a,
+.prose .toc-bold .toc > ol > li > a {
+  font-weight: 600;
+}
+.prose .toc a {
+  text-decoration: none;
+  color: inherit;
+  font-weight: 400;
+}
+.prose .toc a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.prose .toc-title {
+  margin: 0 0 0.5em;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.prose .toc-small .toc {
+  font-size: 0.85em;
+}
+
+/* numbered: 1, 1.1, 1.2, 2… */
+.prose .toc ol {
+  counter-reset: toc-item;
+}
+.prose .toc ol > li {
+  counter-increment: toc-item;
+}
+.prose .toc ol > li > a {
+  display: block;
+  padding-left: 2.25em;
+  text-indent: -2.25em;
+}
+.prose .toc ol > li > a::before {
+  content: counters(toc-item, ".");
+  display: inline-block;
+  min-width: 2em;
+  margin-right: 0.25em;
+  text-indent: 0;
+  color: rgb(107 114 128);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* in a shaded box */
+.prose .toc-boxed {
+  width: fit-content;
+  min-width: min(100%, 24rem);
+  max-width: 100%;
+  padding: 1rem 1.5rem;
+  background: rgb(249 250 251);
+  border: 1px solid rgb(229 231 235);
+  border-radius: 0.5rem;
+}
+.prose .toc-boxed details {
+  padding: 0;
+  border-bottom: 0;
+}
+
+/* in the left margin: on wide screens, site_page.html shows the table of
+   contents in a column beside the text (and hides it where it's placed),
+   and it stays in view as the reader scrolls */
+.toc-margin-column {
+  display: none;
+}
+@media (min-width: 1280px) {
+  .with-margin-toc {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    column-gap: 3rem;
+  }
+  .toc-margin-column {
+    display: block;
+  }
+  .toc-margin-inline {
+    display: none;
+  }
+  .prose .toc-margin-column .toc-block {
+    position: sticky;
+    top: 6rem;
+    max-height: calc(100vh - 7rem);
+    overflow-y: auto;
+    margin-top: 2rem;
+  }
+  .prose .toc-margin-column .toc {
+    font-size: 0.85em;
+  }
+  .prose .toc-margin-column .toc-title {
+    font-size: 1.1rem;
+  }
+}
+
+/* image + text (see templates/blocks/image_text.html): when the block is
+   wide enough the image floats beside the text; the block contains the
+   float, so the next block always starts below both. The layout follows the
+   block's own width rather than the screen's, so it also works in narrower
+   columns and in the CMS's block previews. */
+.prose .image-text {
+  display: flow-root;
+  clear: both;
+  container-type: inline-size;
+}
+.prose .image-text figure {
+  margin: 0 0 1.5rem;
+}
+.prose .image-text img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+.prose .image-text figure + * {
+  margin-top: 0;
+}
+@container (min-width: 600px) {
+  .prose .image-text-left figure {
+    float: left;
+    margin: 0.3rem 2rem 1rem 0;
+  }
+  .prose .image-text-right figure {
+    float: right;
+    margin: 0.3rem 0 1rem 2rem;
+  }
+  .prose .image-text-third figure {
+    width: 33%;
+  }
+  .prose .image-text-half figure {
+    width: 50%;
+  }
+}
+
+/* image row (see templates/blocks/image_row.html): one image per line in a
+   narrow column, such as on a phone, two in a medium one, and up to four in
+   a wide one */
+.prose .image-row-container {
+  clear: both;
+  container-type: inline-size;
+}
+.prose .image-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+@container (min-width: 560px) {
+  .prose .image-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (min-width: 900px) {
+  .prose .image-row {
+    grid-template-columns: repeat(var(--image-row-columns, 3), minmax(0, 1fr));
+  }
+}
+.prose .image-row figure,
+.prose .image-carousel figure {
+  margin: 0;
+}
+.prose .image-row img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+
+/* image row shown as a carousel: every slide shares one grid cell, and the
+   ones not showing are hidden */
+.prose .image-carousel {
+  clear: both;
+}
+.prose .image-carousel-stage {
+  display: grid;
+}
+.prose .image-carousel-stage > figure {
+  grid-area: 1 / 1;
+}
+.prose .image-carousel-stage > figure.is-hidden {
+  visibility: hidden;
+}
+.prose .image-carousel img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 70vh;
+  height: auto;
+  margin: 0 auto;
+}
+.prose .image-carousel-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  color: rgb(107 114 128);
+  font-variant-numeric: tabular-nums;
+}
+.prose .image-carousel-controls button {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid rgb(209 213 219);
+  border-radius: 9999px;
+  background: white;
+  color: rgb(31 41 55);
+}
+.prose .image-carousel-controls button:hover {
+  background: rgb(243 244 246);
+}
+.prose .image-carousel-controls button:focus-visible {
+  outline: 2px solid rgb(30 41 59);
+  outline-offset: 2px;
+}
+
+/* divider (see templates/blocks/divider.html): what follows starts below any
+   floated image above it */
+.prose .content-divider {
+  clear: both;
+}
+.prose .content-divider hr {
+  margin: 0.5rem 0;
 }

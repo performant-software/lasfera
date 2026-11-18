@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "pages",
     "gallery",
     "wagtail.contrib.redirects",
+    "wagtail.contrib.settings",
     "wagtail.embeds",
     "wagtail.sites",
     "wagtail.users",
@@ -125,6 +126,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "config.context_processors.carto",
                 "config.context_processors.test_site_banner",
+                "wagtail.contrib.settings.context_processors.settings",
             ],
         },
     },
@@ -281,6 +283,33 @@ WAGTAILDOCS_EXTENSIONS = [
     "txt",
     "xlsx",
 ]
+# The toolbar of every CMS rich text field: Wagtail's defaults plus
+# superscript, subscript, strikethrough and blockquote
+WAGTAILADMIN_RICH_TEXT_EDITORS = {
+    "default": {
+        "WIDGET": "wagtail.admin.rich_text.DraftailRichTextArea",
+        "OPTIONS": {
+            "features": [
+                "h2",
+                "h3",
+                "h4",
+                "bold",
+                "italic",
+                "superscript",
+                "subscript",
+                "strikethrough",
+                "ol",
+                "ul",
+                "blockquote",
+                "hr",
+                "link",
+                "document-link",
+                "image",
+                "embed",
+            ]
+        },
+    }
+}
 TAGGIT_CASE_INSENSITIVE = True
 
 # Default primary key field type

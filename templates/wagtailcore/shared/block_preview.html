@@ -1,0 +1,46 @@
+{% extends "wagtailcore/shared/block_preview.html" %}
+{% load static tailwind_tags %}
+{% comment %}
+    The previews of blocks in the CMS's "+" menu, shown with the site's own
+    styles. Each block's description and example content are set in
+    pages/models.py.
+{% endcomment %}
+
+{% block css %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+    {% tailwind_css %}
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    <link href="{% static 'fontawesomefree/css/fontawesome.css' %}" rel="stylesheet" type="text/css">
+    <link href="{% static 'fontawesomefree/css/solid.css' %}" rel="stylesheet" type="text/css">
+{% endblock %}
+
+{% block content %}
+    <article class="prose prose-lg max-w-none p-6">
+        {{ block.super }}
+    </article>
+{% endblock %}
+
+{% block js %}
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script>
+        // The "+" menu shows the preview in a narrow frame. Lay the block out
+        // at the width of a page on a laptop, then shrink it to fit, so
+        // editors see how it looks on the site rather than on a phone.
+        (function () {
+            var PAGE_WIDTH = 860;
+            var root = document.documentElement;
+            function fit() {
+                // clientWidth leaves out the frame's scrollbar
+                var scale = Math.min(1, root.clientWidth / PAGE_WIDTH);
+                document.body.style.width = PAGE_WIDTH + "px";
+                document.body.style.zoom = scale;
+            }
+            root.style.overflowX = "hidden";
+            fit();
+            window.addEventListener("load", fit);
+            window.addEventListener("resize", fit);
+        })();
+    </script>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "wagtailcore/shared/block_preview.html" %}
+{% load wagtailcore_tags %}
+{# A divider only does something next to a floated image, so its preview shows one: a grey box stands in for the image #}
+
+{% block content %}
+    <article class="prose prose-lg max-w-none p-6">
+        <div class="block-paragraph">
+            <div class="rounded-lg border border-gray-300" style="float: right; width: 30%; aspect-ratio: 3 / 4; margin: 0 0 1rem 1.5rem; background: rgb(229 231 235)"></div>
+            <p>A short paragraph wraps around an image placed inside it.</p>
+        </div>
+        <div class="block-divider">
+            {% include_block bound_block %}
+        </div>
+        <div class="block-paragraph">
+            <p>Text after the divider starts below the image.</p>
+        </div>
+    </article>
+{% endblock %}
